@@ -105,17 +105,24 @@ export default function Chat() {
     else localStorage.removeItem(draftKey(activeId));
   }, [input, activeId]);
 
+  const activeStreamsRef = useRef(new Set());
+  const receivedLenByMsgRef = useRef({});
+
   const patchMessage = useCallback((id, patch) => {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)));
   }, []);
 
   const attachStream = useCallback(async (assistantId, res, convId) => {
     let currentId = assistantId;
+    if (activeStreamsRef.current.has(currentId)) return;
+    activeStreamsRef.current.add(currentId);
     let newTitle = null;
     try {
       await consumeSSE(res, (evt) => {
         if (evt.start) {
           newTitle = evt.title;
+          activeStreamsRef.current.delete(currentId);
+          activeStreamsRef.current.add(evt.message_id);
           setMessages((prev) =>
             prev.map((m) => {
               if (m.id === currentId) return { ...m, id: evt.message_id };
@@ -125,8 +132,17 @@ export default function Chat() {
           );
           currentId = evt.message_id;
         } else if (evt.delta) {
-          patchMessage(currentId, (m) => ({ content: m.content + evt.delta }));
-          scrollBottom();
+          const priorTotal = receivedLenByMsgRef.current[currentId] || 0;
+          const totalNow = priorTotal + evt.delta.length;
+          receivedLenByMsgRef.current[currentId] = totalNow;
+          if (evt.delta) {
+            patchMessage(currentId, (m) => {
+              const gap = totalNow - m.content.length;
+              const append = gap <= 0 ? "" : evt.delta.slice(Math.max(0, evt.delta.length - gap));
+              return { content: m.content + append };
+            });
+            scrollBottom();
+          }
         } else if (evt.error) {
           patchMessage(currentId, (m) => ({
             content: m.content || "Desculpe, tive um problema para responder agora. Tente novamente.",
@@ -136,12 +152,17 @@ export default function Chat() {
         } else if (evt.done) {
           patchMessage(currentId, { streaming: false, status: "done" });
           forgetPending(currentId);
+          receivedLenByMsgRef.current[currentId] = 0;
+          activeStreamsRef.current.delete(currentId);
         }
       });
       if (newTitle) setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title: newTitle } : c)));
       setTimeout(loadConversations, 4000);
     } catch (e) {
       patchMessage(currentId, (m) => (m.streaming ? { content: m.content || "Falha de conexão. A resposta continua sendo gerada — reabra a conversa em instantes.", streaming: false } : {}));
+    } finally {
+      activeStreamsRef.current.delete(currentId);
+      activeStreamsRef.current.delete(assistantId);
     }
   }, [loadConversations, patchMessage, scrollBottom]);
 
