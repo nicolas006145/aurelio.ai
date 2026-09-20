@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, subscriptionApi } from "@/lib/api";
 
 const AuthContext = createContext(null);
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
@@ -26,8 +26,25 @@ function loadGoogleIdentity() {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const initializedRef = useRef(false);
+
+  const refreshSubscription = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("aurelio_token");
+      if (!token) {
+        setSubscription(null);
+        return null;
+      }
+      const { data } = await subscriptionApi.get();
+      setSubscription(data);
+      return data;
+    } catch {
+      setSubscription(null);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     if (window.location.hash?.includes("session_id=")) {
@@ -37,34 +54,40 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("aurelio_token");
     if (!token) {
       setUser(false);
+      setSubscription(null);
       setLoading(false);
       return;
     }
     api
       .get("/auth/me")
-      .then((res) => setUser(res.data))
+      .then((res) => {
+        setUser(res.data);
+        return refreshSubscription();
+      })
       .catch(() => {
         localStorage.removeItem("aurelio_token");
         setUser(false);
+        setSubscription(null);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshSubscription]);
 
-  const persist = (data) => {
+  const persist = async (data) => {
     localStorage.setItem("aurelio_token", data.token);
     setUser(data.user);
+    await refreshSubscription();
   };
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
-    persist(data);
+    await persist(data);
   };
 
   const register = async (name, email, password, voiceId) => {
     const payload = { name, email, password };
     if (voiceId) payload.voice_id = voiceId;
     const { data } = await api.post("/auth/register", payload);
-    persist(data);
+    await persist(data);
     return data.user;
   };
 
@@ -72,11 +95,12 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       setUser(data);
+      await refreshSubscription();
       return data;
     } catch (e) {
       throw e;
     }
-  }, []);
+  }, [refreshSubscription]);
 
   const updateSettings = useCallback(async ({ voice_id }) => {
     const { data } = await api.patch("/auth/settings", { voice_id });
@@ -100,7 +124,7 @@ export function AuthProvider({ children }) {
               { credential },
               { withCredentials: true },
             );
-            persist(data);
+            await persist(data);
             cancelled = false;
             resolve(data.user);
           } catch (err) {
@@ -115,7 +139,7 @@ export function AuthProvider({ children }) {
               { access_token: accessToken },
               { withCredentials: true },
             );
-            persist(data);
+            await persist(data);
             cancelled = false;
             resolve(data.user);
           } catch (err) {
@@ -190,7 +214,7 @@ export function AuthProvider({ children }) {
 
   const exchangeSession = async (sessionId) => {
     const { data } = await api.post("/auth/session", { session_id: sessionId }, { withCredentials: true });
-    persist(data);
+    await persist(data);
     return data.user;
   };
 
@@ -198,6 +222,7 @@ export function AuthProvider({ children }) {
     api.post("/auth/logout", {}, { withCredentials: true }).catch(() => {});
     localStorage.removeItem("aurelio_token");
     setUser(false);
+    setSubscription(null);
     if (window.google?.accounts?.id?.cancel) {
       try { window.google.accounts.id.cancel(); } catch {}
     }
@@ -205,7 +230,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, loginWithGoogle, exchangeSession, logout, showGoogleOneTap, refreshMe, updateSettings }}
+      value={{ user, subscription, loading, login, register, loginWithGoogle, exchangeSession, logout, showGoogleOneTap, refreshMe, updateSettings, refreshSubscription }}
     >
       {children}
     </AuthContext.Provider>

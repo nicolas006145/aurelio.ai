@@ -98,6 +98,668 @@ AVAILABLE_VOICES = {
 
 DEFAULT_VOICE_ID = "male_mature"
 
+# ---------------------------------------------------------------- plans & subscriptions domain
+
+PAYMENT_PROVIDER_ENV = os.environ.get("PAYMENT_PROVIDER", "mock").strip().lower()
+PAYMENT_ACCESS_TOKEN = os.environ.get("PAYMENT_ACCESS_TOKEN", "")
+PAYMENT_WEBHOOK_SECRET = os.environ.get("PAYMENT_WEBHOOK_SECRET", "")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000").rstrip("/")
+
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", "Aurélio <naoresponda@aurelio.com>")
+
+PLANS = {
+    "free": {
+        "id": "free",
+        "name": "Gratuito",
+        "price_monthly": 0.0,
+        "daily_message_limit": 10,
+        "tier_order": 0,
+        "features": [
+            "10 mensagens por dia",
+            "Conversas salvas",
+            "Diário de reflexões básico",
+            "Reflexão diária",
+            "Login com Google",
+            "Acesso ao chat principal",
+        ],
+    },
+    "founder": {
+        "id": "founder",
+        "name": "Aurélio Fundador",
+        "price_monthly": 7.90,
+        "daily_message_limit": 80,
+        "tier_order": 1,
+        "features": [
+            "80 mensagens por dia",
+            "Histórico completo de conversas",
+            "Diário de reflexões ilimitado",
+            "Reflexões diárias personalizadas",
+            "Organização por temas",
+            "Voz do Aurélio com limite mensal",
+            "Acesso antecipado a melhorias",
+            "Preço especial para os primeiros usuários",
+        ],
+    },
+    "mentor": {
+        "id": "mentor",
+        "name": "Aurélio Mentor",
+        "price_monthly": 19.90,
+        "daily_message_limit": 250,
+        "tier_order": 2,
+        "features": [
+            "250 mensagens por dia",
+            "Tudo do plano Fundador",
+            "Voz do Aurélio com limite maior",
+            "Memória mais completa das conversas",
+            "Respostas mais detalhadas e direcionadas",
+            "Revisão de metas e hábitos",
+            "Prioridade nas respostas",
+            "Novos recursos primeiro",
+        ],
+    },
+}
+
+PLAN_STATUS_ACTIVE = "active"
+PLAN_STATUS_PENDING_PAYMENT = "pending_payment"
+PLAN_STATUS_OVERDUE = "overdue"
+PLAN_STATUS_CANCELED = "canceled"
+
+
+def get_plan(plan_id: str) -> dict:
+    return PLANS.get(plan_id) or PLANS["free"]
+
+
+def get_free_plan() -> dict:
+    return PLANS["free"]
+
+
+def today_brt() -> str:
+    return datetime.now(BRT).date().isoformat()
+
+
+def mask_email(email: str) -> str:
+    if not email or "@" not in email:
+        return email or ""
+    local, domain = email.split("@", 1)
+    if not local:
+        return f"***@{domain}"
+    first = local[0]
+    return f"{first}***@{domain}"
+
+
+def validate_cpf(cpf: str) -> bool:
+    if not cpf:
+        return False
+    c = re.sub(r"\D", "", cpf)
+    if len(c) != 11:
+        return False
+    if c == c[0] * 11:
+        return False
+    def calc_digit(digits: str) -> int:
+        total = 0
+        for i, d in enumerate(digits):
+            total += int(d) * (len(digits) + 1 - i)
+        rem = total % 11
+        return 0 if rem < 2 else 11 - rem
+    d1 = calc_digit(c[:9])
+    d2 = calc_digit(c[:10])
+    return c[-2:] == f"{d1}{d2}"
+
+
+async def lookup_cep(cep: str) -> Optional[dict]:
+    if not cep:
+        return None
+    c = re.sub(r"\D", "", cep)
+    if len(c) != 8:
+        return None
+    try:
+        r = await _httpx_client.get(f"https://viacep.com.br/ws/{c}/json/", timeout=8.0)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if data.get("erro"):
+            return None
+        return {
+            "cep": data.get("cep", c),
+            "street": data.get("logradouro", "") or "",
+            "neighborhood": data.get("bairro", "") or "",
+            "city": data.get("localidade", "") or "",
+            "state": data.get("uf", "") or "",
+            "complement": data.get("complemento", "") or "",
+        }
+    except Exception:
+        logger.exception("viacep lookup failed")
+        return None
+
+
+async def get_or_create_subscription(user_id: str) -> dict:
+    existing = await db.subscriptions.find_one({"user_id": user_id})
+    if existing:
+        return existing
+    plan = get_free_plan()
+    now = now_iso()
+    doc = {
+        "user_id": user_id,
+        "plan_id": plan["id"],
+        "plan_name": plan["name"],
+        "status": PLAN_STATUS_ACTIVE,
+        "price": plan["price_monthly"],
+        "payment_method": None,
+        "started_at": now,
+        "expires_at": None,
+        "last_payment_at": None,
+        "canceled_at": None,
+        "cancel_at_period_end": False,
+        "daily_message_limit": plan["daily_message_limit"],
+        "messages_used_today": 0,
+        "usage_date": today_brt(),
+        "provider_payment_id": None,
+        "provider_subscription_id": None,
+        "card_last4": None,
+        "card_brand": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+    res = await db.subscriptions.update_one(
+        {"user_id": user_id}, {"$setOnInsert": doc}, upsert=True
+    )
+    if res.upserted_id:
+        return await db.subscriptions.find_one({"user_id": user_id})
+    return await db.subscriptions.find_one({"user_id": user_id})
+
+
+def parse_date_maybe(value) -> Optional[datetime]:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value))
+        except Exception:
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def compute_subscription_notices(sub: dict) -> list:
+    notices = []
+    status = sub.get("status")
+    expires_at = parse_date_maybe(sub.get("expires_at"))
+    if sub.get("plan_id") == "free":
+        return notices
+    now = datetime.now(timezone.utc)
+    if status == PLAN_STATUS_CANCELED:
+        notices.append({
+            "type": "canceled",
+            "severity": "warning",
+            "title": "Plano cancelado",
+            "message": "Seu plano foi cancelado após 5 dias sem pagamento.",
+            "cta": "Ver planos",
+        })
+        return notices
+    if status == PLAN_STATUS_OVERDUE:
+        notices.append({
+            "type": "overdue",
+            "severity": "danger",
+            "title": "Plano vencido",
+            "message": "Seu plano venceu. Regularize para continuar usando os benefícios.",
+            "cta": "Regularizar",
+        })
+        return notices
+    if status == PLAN_STATUS_PENDING_PAYMENT:
+        notices.append({
+            "type": "pending_payment",
+            "severity": "warning",
+            "title": "Pagamento pendente",
+            "message": "Seu pagamento está em processamento.",
+            "cta": "Verificar",
+        })
+    if expires_at is not None:
+        delta_days = (expires_at.date() - now.astimezone(BRT).date()).days
+        if delta_days in (5, 3, 1):
+            notices.append({
+                "type": "expiring_soon_days",
+                "days_left": delta_days,
+                "severity": "warning" if delta_days <= 1 else "info",
+                "title": f"Vence em {delta_days} dias",
+                "message": f"Seu plano vence em {delta_days} dias.",
+                "cta": "Renovar",
+            })
+    return notices
+
+
+async def get_today_usage(user_id: str) -> tuple:
+    sub = await get_or_create_subscription(user_id)
+    today = today_brt()
+    used = int(sub.get("messages_used_today") or 0) if sub.get("usage_date") == today else 0
+    limit = int(sub.get("daily_message_limit") or get_free_plan()["daily_message_limit"])
+    return used, limit, today
+
+
+async def get_subscription_summary(user_id: str) -> dict:
+    sub = await get_or_create_subscription(user_id)
+    used, limit, today = await get_today_usage(user_id)
+    return {
+        "plan_id": sub.get("plan_id"),
+        "plan_name": sub.get("plan_name"),
+        "status": sub.get("status"),
+        "payment_method": sub.get("payment_method"),
+        "price": sub.get("price"),
+        "started_at": sub.get("started_at"),
+        "expires_at": sub.get("expires_at"),
+        "last_payment_at": sub.get("last_payment_at"),
+        "canceled_at": sub.get("canceled_at"),
+        "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+        "daily_message_limit": limit,
+        "messages_used_today": used,
+        "messages_remaining_today": max(0, limit - used),
+        "usage_date": today,
+        "card_last4": sub.get("card_last4"),
+        "card_brand": sub.get("card_brand"),
+        "notices": compute_subscription_notices(sub),
+    }
+
+
+def public_subscription(sub_summary: dict) -> dict:
+    return sub_summary
+
+
+# ---------------------------------------------------------------- payment provider adapters
+
+class PaymentProvider:
+    async def init_payment(self, payload: dict) -> dict:
+        raise NotImplementedError
+
+    async def verify_webhook(self, request: Request) -> Optional[dict]:
+        raise NotImplementedError
+
+    async def confirm_pending(self, payment_id: str) -> dict:
+        raise NotImplementedError
+
+
+class MockProvider(PaymentProvider):
+    async def init_payment(self, payload: dict) -> dict:
+        pid = f"mock-pid-{uuid.uuid4().hex[:12]}"
+        sid = f"mock-sid-{uuid.uuid4().hex[:12]}"
+        method = payload.get("payment_method") or "pix"
+        plan_id = payload.get("plan_id") or "founder"
+        plan = get_plan(plan_id)
+        if method == "pix":
+            copy_paste = (
+                f"00020126580014BR.GOV.BCB.PIX0136{uuid.uuid4()}5204000053039865406"
+                f"{plan['price_monthly']:.2f}5802BR5925AURELIO 6009SAO PAULO62070503***6304ABCD"
+            )
+            qr = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iI2ZmZiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LWZhbWlseT0ic2VyaWYiIGZvbnQtc2l6ZT0iMTQiPkFJIFFJIENPREUgTVvDs1NLRTwvdGV4dD48L3N2Zz4="
+            return {
+                "provider_payment_id": pid,
+                "provider_subscription_id": sid,
+                "status": PLAN_STATUS_PENDING_PAYMENT,
+                "payment_method": "pix",
+                "qr_code": copy_paste,
+                "qr_code_base64": qr,
+                "copy_paste": copy_paste,
+                "expires_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            }
+        pid = f"mock-card-{uuid.uuid4().hex[:12]}"
+        sid = f"mock-sid-{uuid.uuid4().hex[:12]}"
+        return {
+            "provider_payment_id": pid,
+            "provider_subscription_id": sid,
+            "status": PLAN_STATUS_ACTIVE,
+            "payment_method": "credit_card",
+            "card_last4": "4242",
+            "card_brand": "visa",
+            "approved": True,
+        }
+
+    async def verify_webhook(self, request: Request) -> Optional[dict]:
+        try:
+            payload = await request.json()
+        except Exception:
+            return None
+        sig = request.headers.get("x-webhook-signature", "")
+        expected = hashlib.sha256(f"{json.dumps(payload, sort_keys=True)}{PAYMENT_WEBHOOK_SECRET}".encode()).hexdigest()
+        if PAYMENT_WEBHOOK_SECRET and sig and sig != expected:
+            logger.warning("mock webhook invalid signature")
+            return None
+        return payload
+
+    async def confirm_pending(self, payment_id: str) -> dict:
+        return {"status": PLAN_STATUS_ACTIVE, "approved": True, "provider_payment_id": payment_id}
+
+
+class MercadoPagoProvider(PaymentProvider):
+    def _headers(self):
+        return {
+            "Authorization": f"Bearer {PAYMENT_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
+            "X-Idempotency-Key": str(uuid.uuid4()),
+        }
+
+    async def init_payment(self, payload: dict) -> dict:
+        plan = get_plan(payload.get("plan_id") or "founder")
+        payer = payload.get("payer") or {}
+        method = payload.get("payment_method") or "pix"
+        external_ref = f"aurelio-sub-{uuid.uuid4().hex[:12]}"
+        notification_url = f"{BACKEND_URL}/api/payments/webhook"
+        base = {
+            "transaction_amount": float(plan["price_monthly"]),
+            "description": f"Assinatura {plan['name']} - mensal",
+            "external_reference": external_ref,
+            "notification_url": notification_url,
+            "payer": {
+                "email": payer.get("email", ""),
+                "first_name": payer.get("name", "").split(" ")[0],
+                "last_name": " ".join(payer.get("name", "").split(" ")[1:]) or " ",
+                "identification": {
+                    "type": "CPF",
+                    "number": re.sub(r"\D", "", payer.get("cpf", "") or ""),
+                },
+                "address": {
+                    "zip_code": re.sub(r"\D", "", payer.get("cep", "") or ""),
+                    "street_name": payer.get("street", ""),
+                    "street_number": str(payer.get("number", "") or "S/N"),
+                    "neighborhood": payer.get("neighborhood", ""),
+                    "city": payer.get("city", ""),
+                    "federal_unit": payer.get("state", ""),
+                },
+            },
+        }
+        if method == "pix":
+            body = {
+                **base,
+                "payment_method_id": "pix",
+                "date_of_expiration": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat(),
+            }
+            try:
+                r = await _httpx_client.post(
+                    "https://api.mercadopago.com/v1/payments", json=body, headers=self._headers(), timeout=20.0
+                )
+                data = r.json()
+                if r.status_code >= 400:
+                    raise HTTPException(status_code=502, detail=data.get("message") or "Mercado Pago recusou a requisição.")
+                point = data.get("point_of_interaction", {}).get("transaction_data", {})
+                return {
+                    "provider_payment_id": str(data.get("id", "")),
+                    "provider_subscription_id": external_ref,
+                    "status": PLAN_STATUS_PENDING_PAYMENT,
+                    "payment_method": "pix",
+                    "qr_code": point.get("qr_code", ""),
+                    "qr_code_base64": point.get("qr_code_base64", ""),
+                    "copy_paste": point.get("qr_code", ""),
+                    "expires_at": data.get("date_of_expiration"),
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.exception("mercado pago pix init failed")
+                raise HTTPException(status_code=502, detail=f"Falha ao iniciar pagamento Pix: {e}")
+        body = {
+            **base,
+            "payment_method_id": payload.get("card_payment_method_id") or "master",
+            "token": payload.get("card_token") or "",
+            "installments": 1,
+            "issuer_id": payload.get("issuer_id") or "",
+        }
+        try:
+            r = await _httpx_client.post(
+                "https://api.mercadopago.com/v1/payments", json=body, headers=self._headers(), timeout=20.0
+            )
+            data = r.json()
+            if r.status_code >= 400:
+                raise HTTPException(status_code=400, detail=data.get("message") or "Pagamento com cartão recusado.")
+            status = PLAN_STATUS_ACTIVE if str(data.get("status")) == "approved" else PLAN_STATUS_PENDING_PAYMENT
+            card = data.get("card", {}) or {}
+            return {
+                "provider_payment_id": str(data.get("id", "")),
+                "provider_subscription_id": external_ref,
+                "status": status,
+                "payment_method": "credit_card",
+                "approved": str(data.get("status")) == "approved",
+                "card_last4": card.get("last_four_digits"),
+                "card_brand": card.get("cardholder", {}).get("identification", {}).get("type"),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception("mercado pago card init failed")
+            raise HTTPException(status_code=502, detail=f"Falha ao processar cartão: {e}")
+
+    async def verify_webhook(self, request: Request) -> Optional[dict]:
+        signature = request.headers.get("x-signature", "") or ""
+        req_id = request.headers.get("x-request-id", "")
+        try:
+            payload = await request.json()
+        except Exception:
+            return None
+        if PAYMENT_WEBHOOK_SECRET:
+            try:
+                parts = {}
+                for chunk in signature.split(","):
+                    if "=" in chunk:
+                        k, v = chunk.split("=", 1)
+                        parts[k.strip()] = v.strip()
+                ts = parts.get("ts", "")
+                hash_ = parts.get("v1", "")
+                manifest = f"id:{payload.get('data', {}).get('id', '')};request-id:{req_id};ts:{ts};{PAYMENT_WEBHOOK_SECRET}"
+                expected = hashlib.sha256(manifest.encode()).hexdigest()
+                if hash_ and expected != hash_:
+                    logger.warning("mercado pago webhook invalid signature")
+                    return None
+            except Exception:
+                logger.exception("mercado pago webhook signature check failed")
+                return None
+        return payload
+
+    async def confirm_pending(self, payment_id: str) -> dict:
+        try:
+            r = await _httpx_client.get(
+                f"https://api.mercadopago.com/v1/payments/{payment_id}",
+                headers={"Authorization": f"Bearer {PAYMENT_ACCESS_TOKEN}"},
+                timeout=15.0,
+            )
+            data = r.json()
+            if r.status_code >= 400:
+                return {"status": PLAN_STATUS_PENDING_PAYMENT, "approved": False}
+            approved = str(data.get("status")) == "approved"
+            return {
+                "status": PLAN_STATUS_ACTIVE if approved else PLAN_STATUS_PENDING_PAYMENT,
+                "approved": approved,
+                "provider_payment_id": payment_id,
+            }
+        except Exception:
+            logger.exception("mercado pago confirm failed")
+            return {"status": PLAN_STATUS_PENDING_PAYMENT, "approved": False}
+
+
+class StripeProvider(PaymentProvider):
+    def _auth(self) -> tuple:
+        return ("Bearer", PAYMENT_ACCESS_TOKEN)
+
+    async def init_payment(self, payload: dict) -> dict:
+        plan = get_plan(payload.get("plan_id") or "founder")
+        method = payload.get("payment_method") or "card"
+        success_url = f"{FRONTEND_URL}/meu-plano?success=1"
+        cancel_url = f"{FRONTEND_URL}/planos?canceled=1"
+        headers = {"Authorization": f"Bearer {PAYMENT_ACCESS_TOKEN}"}
+        if method == "pix":
+            try:
+                data = {
+                    "amount": int(plan["price_monthly"] * 100),
+                    "currency": "brl",
+                    "payment_method_types[]": "pix",
+                    "payment_intent_data[metadata][plan_id]": plan["id"],
+                    "mode": "payment",
+                    "success_url": success_url,
+                    "cancel_url": cancel_url,
+                }
+                r = await _httpx_client.post(
+                    "https://api.stripe.com/v1/checkout/sessions", data=data, headers=headers, timeout=20.0
+                )
+                body = r.json()
+                if r.status_code >= 400:
+                    raise HTTPException(status_code=400, detail=body.get("message") or "Stripe recusou.")
+                return {
+                    "provider_payment_id": body["id"],
+                    "provider_subscription_id": body.get("payment_intent", "") or body["id"],
+                    "status": PLAN_STATUS_PENDING_PAYMENT,
+                    "payment_method": "pix",
+                    "checkout_url": body.get("url"),
+                    "expires_at": body.get("expires_at"),
+                }
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=502, detail=f"Stripe Pix falhou: {e}")
+        try:
+            data = {
+                "mode": "subscription",
+                "success_url": success_url,
+                "cancel_url": cancel_url,
+                "line_items[0][price_data][currency]": "brl",
+                "line_items[0][price_data][product_data][name]": plan["name"],
+                "line_items[0][price_data][unit_amount]": int(plan["price_monthly"] * 100),
+                "line_items[0][price_data][recurring][interval]": "month",
+                "line_items[0][quantity]": 1,
+                "metadata[plan_id]": plan["id"],
+            }
+            r = await _httpx_client.post(
+                "https://api.stripe.com/v1/checkout/sessions", data=data, headers=headers, timeout=20.0
+            )
+            body = r.json()
+            if r.status_code >= 400:
+                raise HTTPException(status_code=400, detail=body.get("message") or "Stripe cartão recusou.")
+            return {
+                "provider_payment_id": body["id"],
+                "provider_subscription_id": body.get("subscription", "") or body["id"],
+                "status": PLAN_STATUS_PENDING_PAYMENT,
+                "payment_method": "credit_card",
+                "checkout_url": body.get("url"),
+                "needs_redirect": True,
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Stripe cartão falhou: {e}")
+
+    async def verify_webhook(self, request: Request) -> Optional[dict]:
+        sig = request.headers.get("stripe-signature", "")
+        body_bytes = await request.body()
+        if not PAYMENT_WEBHOOK_SECRET:
+            try:
+                return json.loads(body_bytes or b"{}")
+            except Exception:
+                return None
+        import hmac
+        import base64
+        try:
+            parts = {}
+            for chunk in sig.split(","):
+                if "=" in chunk:
+                    k, v = chunk.split("=", 1)
+                    parts[k.strip()] = v.strip()
+            t = parts.get("t", "")
+            v1 = parts.get("v1", "")
+            signed_payload = f"{t}.{body_bytes.decode('utf-8', errors='ignore')}"
+            mac = hmac.new(PAYMENT_WEBHOOK_SECRET.encode("utf-8"), signed_payload.encode("utf-8"), hashlib.sha256).hexdigest()
+            if v1 and mac != v1:
+                logger.warning("stripe webhook invalid signature")
+                return None
+            return json.loads(body_bytes or b"{}")
+        except Exception:
+            logger.exception("stripe webhook check failed")
+            return None
+
+    async def confirm_pending(self, payment_id: str) -> dict:
+        try:
+            headers = {"Authorization": f"Bearer {PAYMENT_ACCESS_TOKEN}"}
+            r = await _httpx_client.get(
+                f"https://api.stripe.com/v1/checkout/sessions/{payment_id}", headers=headers, timeout=15.0
+            )
+            data = r.json()
+            if r.status_code >= 400:
+                return {"status": PLAN_STATUS_PENDING_PAYMENT, "approved": False}
+            approved = str(data.get("payment_status")) == "paid"
+            return {
+                "status": PLAN_STATUS_ACTIVE if approved else PLAN_STATUS_PENDING_PAYMENT,
+                "approved": approved,
+                "provider_payment_id": payment_id,
+            }
+        except Exception:
+            logger.exception("stripe confirm failed")
+            return {"status": PLAN_STATUS_PENDING_PAYMENT, "approved": False}
+
+
+def get_payment_provider() -> PaymentProvider:
+    if PAYMENT_PROVIDER_ENV == "mercado_pago":
+        if not PAYMENT_ACCESS_TOKEN:
+            logger.warning("PAYMENT_ACCESS_TOKEN vazio para mercado_pago; usando MockProvider.")
+            return MockProvider()
+        return MercadoPagoProvider()
+    if PAYMENT_PROVIDER_ENV == "stripe":
+        if not PAYMENT_ACCESS_TOKEN:
+            logger.warning("PAYMENT_ACCESS_TOKEN vazio para stripe; usando MockProvider.")
+            return MockProvider()
+        return StripeProvider()
+    if PAYMENT_PROVIDER_ENV in ("mock", "", None):
+        return MockProvider()
+    logger.warning(f"PAYMENT_PROVIDER '{PAYMENT_PROVIDER_ENV}' desconhecido. Usando MockProvider.")
+    return MockProvider()
+
+
+# ---------------------------------------------------------------- email helper
+
+async def send_email(to: str, subject: str, html_body: str) -> bool:
+    if not SMTP_HOST:
+        logger.info(f"[email-not-configured] to={to} subject={subject}")
+        return True
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = SMTP_FROM
+        msg["To"] = to
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        loop = asyncio.get_event_loop()
+
+        def _send():
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+                smtp.starttls()
+                if SMTP_USER:
+                    smtp.login(SMTP_USER, SMTP_PASSWORD)
+                smtp.sendmail(SMTP_FROM, [to], msg.as_string())
+
+        await loop.run_in_executor(None, _send)
+        return True
+    except Exception as e:
+        logger.exception(f"send_email failed subject={subject}: {e}")
+        return False
+
+
+def build_subscription_email_html(heading: str, body: str, cta_text: str, cta_href: str) -> str:
+    return f"""
+    <div style="font-family: Georgia, 'Times New Roman', serif; color:#1f1b18; line-height:1.6; max-width:560px; margin:0 auto;">
+      <div style="font-size:22px; color:#c46f39; margin-bottom:18px;">Aurélio.</div>
+      <h2 style="font-size:20px; margin-bottom:12px;">{heading}</h2>
+      <p style="font-size:15px;">{body}</p>
+      <div style="margin:24px 0;">
+        <a href="{cta_href}" style="background:#c46f39; color:#0f0e0d; padding:10px 22px; border-radius:999px; text-decoration:none; font-weight:600;">{cta_text}</a>
+      </div>
+      <p style="font-size:12px; color:#7a6f66;">Aurélio — Valorizando a verdade, sem bajulação.</p>
+    </div>
+    """
+
+
 # ---------------------------------------------------------------- rate / context limits
 _MAX_USER_TURNS_PER_MINUTE = 12
 _MAX_CONTEXT_MESSAGES = 18
@@ -214,14 +876,64 @@ def create_access_token(user_id: str, email: str) -> str:
 
 def public_user(user: dict) -> dict:
     settings = user.get("settings") or default_user_settings()
+    uid = str(user["_id"])
+    subscription = None
+    try:
+        sub_doc = _sync_get_sub_cached(uid)
+    except Exception:
+        sub_doc = None
+    if sub_doc:
+        plan = get_plan(sub_doc.get("plan_id") or "free")
+        subscription = {
+            "plan_id": sub_doc.get("plan_id"),
+            "plan_name": sub_doc.get("plan_name") or plan["name"],
+            "status": sub_doc.get("status"),
+            "daily_message_limit": sub_doc.get("daily_message_limit") or plan["daily_message_limit"],
+            "expires_at": sub_doc.get("expires_at"),
+            "payment_method": sub_doc.get("payment_method"),
+            "cancel_at_period_end": bool(sub_doc.get("cancel_at_period_end")),
+        }
+    else:
+        free = get_free_plan()
+        subscription = {
+            "plan_id": free["id"],
+            "plan_name": free["name"],
+            "status": PLAN_STATUS_ACTIVE,
+            "daily_message_limit": free["daily_message_limit"],
+            "expires_at": None,
+            "payment_method": None,
+            "cancel_at_period_end": False,
+        }
+    email = user.get("email") or ""
     return {
-        "id": str(user["_id"]),
+        "id": uid,
         "name": user.get("name", ""),
-        "email": user["email"],
+        "email": email,
+        "email_masked": mask_email(email),
         "picture": user.get("picture"),
         "settings": settings,
         "voice_config": get_voice_config(settings.get("voice_id") or DEFAULT_VOICE_ID),
+        "subscription": subscription,
     }
+
+
+_SUB_CACHE: dict = {}
+
+
+def _sync_get_sub_cached(user_id: str) -> Optional[dict]:
+    import time as _time
+    now = _time.time()
+    cached = _SUB_CACHE.get(user_id)
+    if cached and (now - cached["ts"]) < 10:
+        return cached["doc"]
+    try:
+        import asyncio as _aio
+        loop = _aio.get_event_loop()
+        if loop.is_running():
+            return None
+    except Exception:
+        pass
+    return None
 
 
 async def _user_from_session_token(token: str) -> Optional[dict]:
@@ -259,6 +971,13 @@ async def get_current_user(request: Request) -> dict:
 
     if not user:
         raise HTTPException(status_code=401, detail="Sessão inválida")
+    uid = str(user["_id"])
+    try:
+        sub = await get_or_create_subscription(uid)
+        import time as _t
+        _SUB_CACHE[uid] = {"ts": _t.time(), "doc": sub}
+    except Exception:
+        pass
     return public_user(user)
 
 
@@ -308,6 +1027,425 @@ class JournalInput(BaseModel):
     message_id: Optional[str] = None
 
 
+class PayerInput(BaseModel):
+    name: str = Field(min_length=3)
+    cpf: str
+    email: EmailStr
+    cep: str
+    street: str
+    number: str
+    neighborhood: Optional[str] = ""
+    city: str
+    state: str
+    complement: Optional[str] = ""
+
+
+class PaymentInitInput(BaseModel):
+    plan_id: str
+    payment_method: str = Field(pattern=r"^(pix|credit_card)$")
+    payer: PayerInput
+    card_token: Optional[str] = None
+    card_payment_method_id: Optional[str] = None
+    issuer_id: Optional[str] = None
+
+
+class CpfInput(BaseModel):
+    cpf: str
+
+
+class ConfirmPaymentInput(BaseModel):
+    payment_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------- daily limit & maintenance
+
+async def consume_daily_message(user_id: str) -> bool:
+    sub = await get_or_create_subscription(user_id)
+    today = today_brt()
+    if sub.get("usage_date") != today:
+        await db.subscriptions.update_one(
+            {"user_id": user_id},
+            {"$set": {"usage_date": today, "messages_used_today": 0, "updated_at": now_iso()}},
+        )
+        sub = await get_or_create_subscription(user_id)
+    limit = int(sub.get("daily_message_limit") or get_free_plan()["daily_message_limit"])
+    used = int(sub.get("messages_used_today") or 0)
+    if used >= limit:
+        return False
+    res = await db.subscriptions.update_one(
+        {"user_id": user_id, "usage_date": today, "messages_used_today": {"$lt": limit}},
+        {"$inc": {"messages_used_today": 1}, "$set": {"updated_at": now_iso()}},
+    )
+    return res.modified_count > 0
+
+
+async def ensure_plan_limit(user_id: str) -> None:
+    ok = await consume_daily_message(user_id)
+    if not ok:
+        raise HTTPException(
+            status_code=402,
+            detail="Você atingiu o limite diário de mensagens do seu plano. Volte amanhã ou considere assinar um plano com mais capacidade.",
+        )
+
+
+async def _downgrade_to_free(user_id: str, set_canceled: bool = True) -> None:
+    free = get_free_plan()
+    update = {
+        "plan_id": free["id"],
+        "plan_name": free["name"],
+        "status": PLAN_STATUS_CANCELED if set_canceled else PLAN_STATUS_ACTIVE,
+        "price": free["price_monthly"],
+        "payment_method": None,
+        "expires_at": None,
+        "provider_subscription_id": None,
+        "provider_payment_id": None,
+        "card_last4": None,
+        "card_brand": None,
+        "cancel_at_period_end": False,
+        "daily_message_limit": free["daily_message_limit"],
+        "updated_at": now_iso(),
+    }
+    if set_canceled:
+        update["canceled_at"] = now_iso()
+    await db.subscriptions.update_one({"user_id": user_id}, {"$set": update})
+
+
+async def activate_subscription(
+    user_id: str,
+    plan_id: str,
+    payment_method: str,
+    provider_payment_id: Optional[str] = None,
+    provider_subscription_id: Optional[str] = None,
+    card_last4: Optional[str] = None,
+    card_brand: Optional[str] = None,
+) -> None:
+    plan = get_plan(plan_id)
+    now = datetime.now(timezone.utc)
+    started_at = now_iso()
+    expires_at = (now + timedelta(days=30)).isoformat()
+    current = await get_or_create_subscription(user_id)
+    if current.get("status") in (PLAN_STATUS_ACTIVE, PLAN_STATUS_PENDING_PAYMENT, PLAN_STATUS_OVERDUE):
+        pass
+    update = {
+        "plan_id": plan["id"],
+        "plan_name": plan["name"],
+        "status": PLAN_STATUS_ACTIVE,
+        "price": plan["price_monthly"],
+        "payment_method": payment_method,
+        "expires_at": expires_at,
+        "last_payment_at": started_at,
+        "canceled_at": None,
+        "cancel_at_period_end": False,
+        "daily_message_limit": plan["daily_message_limit"],
+        "updated_at": started_at,
+    }
+    if provider_payment_id:
+        update["provider_payment_id"] = provider_payment_id
+    if provider_subscription_id:
+        update["provider_subscription_id"] = provider_subscription_id
+    if card_last4:
+        update["card_last4"] = card_last4
+    if card_brand:
+        update["card_brand"] = card_brand
+    if not current.get("started_at") or current.get("plan_id") == "free":
+        update["started_at"] = started_at
+    await db.subscriptions.update_one({"user_id": user_id}, {"$set": update})
+    user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "name": 1})
+    if user:
+        email = user.get("email")
+        if email:
+            body = f"Olá, {user.get('name') or email.split('@')[0]}.<br><br>Seu pagamento do plano <b>{plan['name']}</b> foi confirmado. Você já pode aproveitar todos os benefícios do plano.<br>Próximo vencimento: <b>{datetime.fromisoformat(expires_at).astimezone(BRT).strftime('%d/%m/%Y')}</b>."
+            await send_email(email, "Pagamento confirmado — Aurélio", build_subscription_email_html("Pagamento confirmado.", body, "Acessar Aurélio", f"{FRONTEND_URL}/chat"))
+
+
+async def run_subscription_maintenance() -> None:
+    logger.info("running subscription maintenance")
+    now = datetime.now(timezone.utc).astimezone(BRT)
+    today_date = now.date()
+    # reset diário de usage_date caso não tenha sido feito on-demand
+    yesterday = (now - timedelta(days=1)).date().isoformat()
+    await db.subscriptions.update_many(
+        {"usage_date": {"$nin": [None, today_date.isoformat()]}},
+        {"$set": {"usage_date": today_date.isoformat(), "messages_used_today": 0, "updated_at": now_iso()}},
+    )
+    overdue = 0
+    canceled = 0
+    emails_5 = emails_3 = emails_1 = emails_overdue = 0
+    cursor = db.subscriptions.find({})
+    async for sub in cursor:
+        user_id = sub["user_id"]
+        status = sub.get("status")
+        expires_at = parse_date_maybe(sub.get("expires_at"))
+        plan_id = sub.get("plan_id") or "free"
+        if plan_id == "free":
+            continue
+        if status == PLAN_STATUS_ACTIVE and expires_at is not None:
+            delta = (expires_at.astimezone(BRT).date() - today_date).days
+            if delta < 0:
+                await db.subscriptions.update_one(
+                    {"_id": sub["_id"]},
+                    {"$set": {"status": PLAN_STATUS_OVERDUE, "updated_at": now_iso()}},
+                )
+                overdue += 1
+                user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "name": 1})
+                if user and user.get("email"):
+                    body = f"Seu plano expirou em {expires_at.astimezone(BRT).strftime('%d/%m/%Y')}. Para continuar aproveitando os benefícios, regularize agora."
+                    await send_email(user["email"], "Seu plano Aurélio venceu", build_subscription_email_html("Plano vencido.", body, "Regularizar", f"{FRONTEND_URL}/planos"))
+                    emails_overdue += 1
+                continue
+            if delta == 5:
+                user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "name": 1})
+                if user and user.get("email"):
+                    body = f"Faltam 5 dias para o vencimento do seu plano em {expires_at.astimezone(BRT).strftime('%d/%m/%Y')}."
+                    await send_email(user["email"], "Aurélio: faltam 5 dias para vencer", build_subscription_email_html("Faltam 5 dias.", body, "Ver meu plano", f"{FRONTEND_URL}/meu-plano"))
+                    emails_5 += 1
+            elif delta == 3:
+                user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "name": 1})
+                if user and user.get("email"):
+                    body = f"Faltam 3 dias para o vencimento do seu plano."
+                    await send_email(user["email"], "Aurélio: faltam 3 dias para vencer", build_subscription_email_html("Faltam 3 dias.", body, "Ver meu plano", f"{FRONTEND_URL}/meu-plano"))
+                    emails_3 += 1
+            elif delta == 1:
+                user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "name": 1})
+                if user and user.get("email"):
+                    body = f"Amanhã é o último dia do seu ciclo. Renove para não perder os benefícios."
+                    await send_email(user["email"], "Aurélio: seu plano vence amanhã", build_subscription_email_html("Vence amanhã.", body, "Renovar agora", f"{FRONTEND_URL}/meu-plano"))
+                    emails_1 += 1
+        if status == PLAN_STATUS_OVERDUE and expires_at is not None:
+            days_overdue = (today_date - expires_at.astimezone(BRT).date()).days
+            if days_overdue >= 5:
+                await _downgrade_to_free(user_id, set_canceled=True)
+                canceled += 1
+                user = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "name": 1})
+                if user and user.get("email"):
+                    body = "Passaram 5 dias desde o vencimento sem pagamento. Seu plano foi cancelado e você voltou para o Gratuito. A qualquer momento você pode reassinar."
+                    await send_email(user["email"], "Plano cancelado — Aurélio", build_subscription_email_html("Plano cancelado.", body, "Reassinar", f"{FRONTEND_URL}/planos"))
+    logger.info(f"maintenance done: overdue={overdue} canceled={canceled} emails(5/3/1/odr)={emails_5}/{emails_3}/{emails_1}/{emails_overdue}")
+
+
+_MAINTENANCE_TASK = None
+
+
+def start_maintenance_loop():
+    global _MAINTENANCE_TASK
+
+    async def loop():
+        while True:
+            try:
+                await run_subscription_maintenance()
+            except Exception:
+                logger.exception("maintenance loop error")
+            await asyncio.sleep(3600)
+
+    _MAINTENANCE_TASK = asyncio.create_task(loop())
+
+
+# ---------------------------------------------------------------- plans & subscription routes
+
+@api_router.get("/")
+async def api_root():
+    return {"message": "Aurélio API", "status": "ok"}
+
+
+@api_router.get("/plans")
+async def list_plans():
+    return {"plans": list(PLANS.values())}
+
+
+@api_router.get("/subscription")
+async def get_subscription(user: dict = Depends(get_current_user)):
+    summary = await get_subscription_summary(user["id"])
+    return {"subscription": public_subscription(summary)}
+
+
+@api_router.post("/subscription/cancel")
+async def cancel_subscription(user: dict = Depends(get_current_user)):
+    sub = await get_or_create_subscription(user["id"])
+    if sub.get("plan_id") == "free":
+        raise HTTPException(status_code=400, detail="Você já está no plano gratuito.")
+    status = sub.get("status")
+    if status == PLAN_STATUS_CANCELED:
+        raise HTTPException(status_code=400, detail="Seu plano já foi cancelado.")
+    if sub.get("cancel_at_period_end"):
+        return {"ok": True, "subscription": await get_subscription_summary(user["id"])}
+    await db.subscriptions.update_one(
+        {"user_id": user["id"]},
+        {"$set": {"cancel_at_period_end": True, "updated_at": now_iso()}},
+    )
+    return {"ok": True, "subscription": await get_subscription_summary(user["id"])}
+
+
+@api_router.get("/payments/cep/{cep}")
+async def get_cep(cep: str, user: dict = Depends(get_current_user)):
+    data = await lookup_cep(cep)
+    if not data:
+        raise HTTPException(status_code=400, detail="CEP inválido ou não encontrado.")
+    return {"address": data}
+
+
+@api_router.post("/payments/validate-cpf")
+async def validate_cpf_endpoint(data: CpfInput, user: dict = Depends(get_current_user)):
+    valid = validate_cpf(data.cpf)
+    return {"valid": valid, "message": "" if valid else "CPF inválido."}
+
+
+@api_router.post("/payments/init")
+async def init_payment(data: PaymentInitInput, user: dict = Depends(get_current_user)):
+    if data.plan_id not in PLANS:
+        raise HTTPException(status_code=400, detail="Plano inválido.")
+    if not validate_cpf(data.payer.cpf):
+        raise HTTPException(status_code=400, detail="CPF inválido. Verifique e tente novamente.")
+    cep_data = await lookup_cep(data.payer.cep)
+    if not cep_data:
+        raise HTTPException(status_code=400, detail="CEP inválido ou não encontrado.")
+    if data.payment_method == "credit_card" and not data.card_token and PAYMENT_PROVIDER_ENV != "mock":
+        raise HTTPException(status_code=400, detail="Dados do cartão ausentes.")
+    provider = get_payment_provider()
+    payload = data.model_dump()
+    result = await provider.init_payment(payload)
+    payment_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "plan_id": data.plan_id,
+        "plan_name": get_plan(data.plan_id)["name"],
+        "payment_method": data.payment_method,
+        "provider_payment_id": result.get("provider_payment_id"),
+        "provider_subscription_id": result.get("provider_subscription_id"),
+        "status": result.get("status") or PLAN_STATUS_PENDING_PAYMENT,
+        "price": get_plan(data.plan_id)["price_monthly"],
+        "payer": {
+            "name": data.payer.name,
+            "email": str(data.payer.email),
+            "cpf_masked": mask_email(data.payer.cpf[-3:] + "@cpf")[:-4] + "***",
+            "cep": cep_data.get("cep"),
+            "city": cep_data.get("city"),
+            "state": cep_data.get("state"),
+        },
+        "webhook_events_seen": [],
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.payments.insert_one(dict(payment_doc))
+    if result.get("status") == PLAN_STATUS_ACTIVE or result.get("approved"):
+        await activate_subscription(
+            user["id"],
+            data.plan_id,
+            data.payment_method,
+            provider_payment_id=result.get("provider_payment_id"),
+            provider_subscription_id=result.get("provider_subscription_id"),
+            card_last4=result.get("card_last4"),
+            card_brand=result.get("card_brand"),
+        )
+    else:
+        await db.subscriptions.update_one(
+            {"user_id": user["id"]},
+            {
+                "$set": {
+                    "status": PLAN_STATUS_PENDING_PAYMENT,
+                    "provider_payment_id": result.get("provider_payment_id"),
+                    "provider_subscription_id": result.get("provider_subscription_id"),
+                    "updated_at": now_iso(),
+                }
+            },
+        )
+    return {
+        "payment": payment_doc,
+        "provider_result": {
+            k: v for k, v in result.items()
+            if k not in ("card_token", "card_cvv")
+        },
+    }
+
+
+@api_router.post("/payments/confirm")
+async def confirm_payment(data: ConfirmPaymentInput, user: dict = Depends(get_current_user)):
+    provider = get_payment_provider()
+    payment_id = data.payment_id
+    if not payment_id:
+        last_pending = await db.payments.find_one(
+            {"user_id": user["id"], "status": PLAN_STATUS_PENDING_PAYMENT},
+            sort=[("created_at", -1)],
+        )
+        if not last_pending:
+            raise HTTPException(status_code=400, detail="Nenhum pagamento pendente encontrado.")
+        payment_id = last_pending.get("provider_payment_id")
+    result = await provider.confirm_pending(payment_id)
+    approved = bool(result.get("approved"))
+    payment = await db.payments.find_one({"user_id": user["id"], "provider_payment_id": payment_id})
+    if payment:
+        new_status = result.get("status") or payment["status"]
+        await db.payments.update_one(
+            {"_id": payment["_id"]},
+            {"$set": {"status": new_status, "updated_at": now_iso()}},
+        )
+    if approved and payment:
+        await activate_subscription(
+            user["id"],
+            payment["plan_id"],
+            payment["payment_method"],
+            provider_payment_id=payment_id,
+            provider_subscription_id=payment.get("provider_subscription_id"),
+        )
+    return {"approved": approved, "subscription": await get_subscription_summary(user["id"])}
+
+
+@api_router.post("/payments/webhook")
+async def payment_webhook(request: Request):
+    provider = get_payment_provider()
+    payload = await provider.verify_webhook(request)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Assinatura do webhook inválida.")
+    pid = None
+    # Mercado Pago
+    if isinstance(payload, dict) and payload.get("data", {}).get("id"):
+        pid = str(payload["data"]["id"])
+    # Stripe
+    elif isinstance(payload, dict) and payload.get("data", {}).get("object"):
+        obj = payload["data"]["object"]
+        pid = str(obj.get("payment_intent") or obj.get("id") or "")
+    elif isinstance(payload, dict) and payload.get("id"):
+        pid = str(payload["id"])
+    event_type = str(payload.get("type") or "")
+    approved = False
+    if "payment" in event_type.lower() and ("approved" in event_type.lower() or "succeeded" in event_type.lower()):
+        approved = True
+    if PAYMENT_PROVIDER_ENV == "stripe":
+        if event_type in ("checkout.session.completed", "invoice.paid", "payment_intent.succeeded"):
+            approved = True
+    if PAYMENT_PROVIDER_ENV == "mercado_pago":
+        if "approved" in str(payload.get("action") or "").lower() or str(payload.get("status")) == "approved":
+            approved = True
+    logger.info(f"webhook received pid={pid} event={event_type} approved={approved}")
+    if not pid:
+        return {"ok": True, "processed": False, "reason": "no_payment_id"}
+    payment = await db.payments.find_one({"provider_payment_id": pid})
+    if not payment:
+        return {"ok": True, "processed": False, "reason": "payment_not_found"}
+    event_key = f"{event_type}|{pid}"
+    if event_key in (payment.get("webhook_events_seen") or []):
+        return {"ok": True, "processed": True, "idempotent": True}
+    await db.payments.update_one(
+        {"_id": payment["_id"]},
+        {
+            "$push": {"webhook_events_seen": event_key},
+            "$set": {"updated_at": now_iso()},
+        },
+    )
+    if approved:
+        await db.payments.update_one(
+            {"_id": payment["_id"]},
+            {"$set": {"status": PLAN_STATUS_ACTIVE, "updated_at": now_iso()}},
+        )
+        await activate_subscription(
+            payment["user_id"],
+            payment["plan_id"],
+            payment["payment_method"],
+            provider_payment_id=pid,
+            provider_subscription_id=payment.get("provider_subscription_id"),
+        )
+    return {"ok": True, "processed": True}
+
+
 # ---------------------------------------------------------------- auth routes
 @api_router.post("/auth/register")
 async def register(data: RegisterInput):
@@ -326,6 +1464,10 @@ async def register(data: RegisterInput):
     }
     res = await db.users.insert_one(doc)
     doc["_id"] = res.inserted_id
+    try:
+        await get_or_create_subscription(str(res.inserted_id))
+    except Exception:
+        logger.exception("register: creating subscription failed")
     return {"token": create_access_token(str(res.inserted_id), email), "user": public_user(doc)}
 
 
@@ -745,6 +1887,7 @@ async def chat(conversation_id: str, data: ChatInput, user: dict = Depends(get_c
         raise HTTPException(status_code=400, detail="Mensagem vazia")
     if not check_user_rate(user["id"]):
         raise HTTPException(status_code=429, detail="Calma aí. Espere um pouco antes de enviar outra mensagem.")
+    await ensure_plan_limit(user["id"])
     vc = await get_user_voice_config(user["id"])
     user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, text, "text", vc["id"])
     head = {"start": True, "message_id": assistant_msg["id"], "user_message_id": user_msg["id"], "title": new_title}
@@ -759,6 +1902,7 @@ async def start_chat(conversation_id: str, data: ChatInput, user: dict = Depends
         raise HTTPException(status_code=400, detail="Mensagem vazia")
     if not check_user_rate(user["id"]):
         raise HTTPException(status_code=429, detail="Calma aí. Espere um pouco antes de enviar outra mensagem.")
+    await ensure_plan_limit(user["id"])
     vc = await get_user_voice_config(user["id"])
     user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, text, "text", vc["id"])
     return {
@@ -787,6 +1931,7 @@ async def voice_turn(conversation_id: str, audio: UploadFile = File(...), user: 
     await owned_conversation(conversation_id, user)
     if not check_user_rate(user["id"]):
         raise HTTPException(status_code=429, detail="Calma aí. Espere um pouco antes de enviar outra.")
+    await ensure_plan_limit(user["id"])
     raw = await audio.read()
     if len(raw) < 1500:
         return {"transcript": "", "reply": None}
@@ -1071,6 +2216,17 @@ async def startup():
     await db.journal_entries.create_index("user_id")
     await db.tts_cache.create_index("key", unique=True)
     await db.daily_reflections.create_index("date", unique=True)
+    await db.subscriptions.create_index("user_id", unique=True)
+    await db.subscriptions.create_index([("status", 1), ("expires_at", 1)])
+    await db.payments.create_index("provider_payment_id", unique=True)
+    await db.payments.create_index("user_id")
+    await db.payments.create_index([("user_id", 1), ("created_at", -1)])
+
+    try:
+        await run_subscription_maintenance()
+    except Exception:
+        logger.exception("startup maintenance failed")
+    start_maintenance_loop()
 
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
     stale = await db.messages.find(

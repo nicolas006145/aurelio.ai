@@ -1,6 +1,8 @@
 import { useState, memo } from "react";
-import { Plus, Trash2, LogOut, X, BookMarked, ChevronDown } from "lucide-react";
+import { Plus, Trash2, LogOut, X, BookMarked, ChevronDown, Sparkles, CreditCard } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { THEMES, themeOf } from "@/lib/themes";
+import { SubscriptionBell } from "@/components/SubscriptionBell";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=200&q=80";
@@ -69,6 +71,19 @@ function ThemeGroup({ theme, items, activeId, onSelect, onDelete, pendingMap, ne
   );
 }
 
+function maskEmail(email) {
+  if (!email) return "";
+  const [local, domain = ""] = email.split("@");
+  if (!local) return email;
+  if (local.length <= 2) {
+    return `${local[0] || ""}***@${domain}`;
+  }
+  const visibleStart = Math.min(2, local.length);
+  const visibleEnd = local.length >= 5 ? 1 : 0;
+  const masked = local.slice(0, visibleStart) + "***" + (visibleEnd ? local.slice(-visibleEnd) : "");
+  return `${masked}@${domain}`;
+}
+
 export function Sidebar({
   open,
   onClose,
@@ -86,6 +101,13 @@ export function Sidebar({
   const [filter, setFilter] = useState("all");
   const usedThemes = THEMES.filter((t) => conversations.some((c) => themeOf(c.theme).id === t.id));
   const visible = filter === "all" ? conversations : conversations.filter((c) => themeOf(c.theme).id === filter);
+  const navigate = useNavigate();
+  const planLabel = user?.plan?.name || user?.subscription?.plan?.name || "Gratuito";
+  const isPaid = planLabel !== "Gratuito";
+  const userEmailMasked = user?.email_masked || maskEmail(user?.email);
+  const primaryLine = user?.name?.trim() ? user.name : userEmailMasked;
+  const secondaryLine = user?.name?.trim() ? userEmailMasked : (isPaid ? `Plano ${planLabel}` : "Plano gratuito");
+  const subscription = user?.subscription || null;
 
   return (
     <>
@@ -185,26 +207,55 @@ export function Sidebar({
               ))}
         </div>
 
-        <div className="border-t border-[var(--border)] p-4 flex items-center gap-3">
-          {user?.picture ? (
-            <img src={user.picture} alt="" className="h-9 w-9 rounded-full object-cover" referrerPolicy="no-referrer" />
-          ) : (
-            <div className="h-9 w-9 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] grid place-items-center font-semibold uppercase">
-              {user?.name?.[0] || "U"}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="text-sm truncate text-[var(--text-primary)]">{user?.name}</div>
-            <div className="text-xs truncate text-[var(--text-muted)]">{user?.email}</div>
-          </div>
+        <div className="border-t border-[var(--border)] p-4 space-y-3">
           <button
-            data-testid="logout-button"
-            onClick={onLogout}
-            className="text-[var(--text-muted)] hover:text-[var(--terracotta)] transition-colors"
-            aria-label="Sair"
+            data-testid="sidebar-my-plan-button"
+            onClick={() => navigate("/meu-plano")}
+            className="w-full flex items-center gap-2 justify-center rounded-full border border-[var(--border)] text-[var(--text-secondary)] py-2.5 text-sm font-medium hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] transition-colors"
           >
-            <LogOut size={17} />
+            <CreditCard size={16} /> Meu plano
           </button>
+          {!isPaid && (
+            <button
+              data-testid="sidebar-upgrade-button"
+              onClick={() => navigate("/planos")}
+              className="w-full rounded-xl border border-[var(--border-accent)] bg-[var(--terracotta)]/10 px-3 py-2.5 text-left hover:bg-[var(--terracotta)]/15 transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <Sparkles size={14} className="text-[var(--terracotta)] shrink-0" />
+                <span className="text-[11px] uppercase tracking-[0.18em] font-semibold text-[var(--terracotta)]">Plano gratuito</span>
+              </div>
+              <p className="text-[12px] leading-snug text-[var(--text-secondary)]">
+                10 mensagens por dia. <span className="text-[var(--terracotta)] font-medium">Ver planos →</span>
+              </p>
+            </button>
+          )}
+          <div className="flex items-center gap-3">
+            <div className="relative shrink-0">
+              {user?.picture ? (
+                <img src={user.picture} alt="" className="h-9 w-9 rounded-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                <div className="h-9 w-9 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] grid place-items-center font-semibold uppercase">
+                  {(user?.name?.trim()?.[0]) || userEmailMasked?.[0] || "U"}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm truncate text-[var(--text-primary)] font-medium">{primaryLine || "Usuário"}</div>
+              <div className="text-xs truncate text-[var(--text-muted)] flex items-center gap-1.5">
+                {secondaryLine}
+              </div>
+            </div>
+            <SubscriptionBell subscription={subscription} user={user} />
+            <button
+              data-testid="logout-button"
+              onClick={onLogout}
+              className="text-[var(--text-muted)] hover:text-[var(--terracotta)] transition-colors"
+              aria-label="Sair"
+            >
+              <LogOut size={17} />
+            </button>
+          </div>
         </div>
       </aside>
     </>

@@ -5,6 +5,8 @@ import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Auth from "@/pages/Auth";
 import Chat from "@/pages/Chat";
+import MyPlan from "@/pages/MyPlan";
+import PricingPlans from "@/components/PricingPlans";
 
 function Loader({ label = "Aurélio." }) {
   return (
@@ -71,11 +73,20 @@ function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/auth" element={<AuthRoute />} />
+      <Route path="/planos" element={<PricingPlans />} />
       <Route
         path="/chat"
         element={
           <Protected>
             <Chat />
+          </Protected>
+        }
+      />
+      <Route
+        path="/meu-plano"
+        element={
+          <Protected>
+            <MyPlan />
           </Protected>
         }
       />

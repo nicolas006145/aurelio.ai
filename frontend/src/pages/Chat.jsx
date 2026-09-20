@@ -297,8 +297,6 @@ export default function Chat() {
   const send = async (text) => {
     const content = (text ?? input).trim();
     if (!content || sending) return;
-    setInput("");
-    localStorage.removeItem(draftKey(activeId));
     setSending(true);
     try {
       const convId = await ensureConversation();
@@ -309,6 +307,8 @@ export default function Chat() {
         { id: tempId, role: "assistant", content: "", streaming: true, status: "pending" },
       ]);
       const started = await startChatTurn(convId, content);
+      setInput("");
+      localStorage.removeItem(draftKey(activeId));
       rememberPending(started.message_id, convId);
       setMessages((prev) =>
         prev.map((m) => {
@@ -321,7 +321,18 @@ export default function Chat() {
       const res = await openResumeStream(started.message_id);
       await attachStream(started.message_id, res, convId);
     } catch (e) {
-      toast.error("Não foi possível enviar. Verifique sua conexão.");
+      const status = e?.response?.status;
+      if (status === 402) {
+        toast.error("Você atingiu seu limite diário de mensagens.", {
+          description: "Amanhã ele reseta, ou você pode assinar um plano com mais capacidade agora.",
+          action: {
+            label: "Ver planos",
+            onClick: () => navigate("/planos"),
+          },
+        });
+      } else {
+        toast.error("Não foi possível enviar. Verifique sua conexão.");
+      }
     } finally {
       setSending(false);
     }
