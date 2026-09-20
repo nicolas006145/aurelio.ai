@@ -72,11 +72,11 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, [refreshSubscription]);
 
-  const persist = async (data) => {
+  const persist = useCallback(async (data) => {
     localStorage.setItem("aurelio_token", data.token);
     setUser(data.user);
     await refreshSubscription();
-  };
+  }, [refreshSubscription]);
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
@@ -184,7 +184,7 @@ export function AuthProvider({ children }) {
 
     const redirectUrl = window.location.origin + "/chat";
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-  }, []);
+  }, [persist]);
 
   const showGoogleOneTap = useCallback(async () => {
     if (!GOOGLE_CLIENT_ID) return;
@@ -210,7 +210,7 @@ export function AuthProvider({ children }) {
     } catch {
       initializedRef.current = false;
     }
-  }, []);
+  }, [persist]);
 
   const exchangeSession = async (sessionId) => {
     const { data } = await api.post("/auth/session", { session_id: sessionId }, { withCredentials: true });
