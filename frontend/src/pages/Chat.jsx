@@ -83,6 +83,82 @@ export default function Chat() {
     return data;
   }, []);
 
+  const conversationsRef = useRef([]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+
+  useEffect(() => {
+    if (activeId) localStorage.setItem(activeConversationKey, activeId);
+    else localStorage.removeItem(activeConversationKey);
+  }, [activeId]);
+
+  useEffect(() => {
+    scrollBottom();
+  }, [messages, scrollBottom]);
+
+  useEffect(() => {
+    if (input) localStorage.setItem(draftKey(activeId), input);
+    else localStorage.removeItem(draftKey(activeId));
+  }, [input, activeId]);
+
+  const patchMessage = useCallback((id, patch) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)));
+  }, []);
+
+  const attachStream = useCallback(async (assistantId, res, convId) => {
+    let currentId = assistantId;
+    let newTitle = null;
+    try {
+      await consumeSSE(res, (evt) => {
+        if (evt.start) {
+          newTitle = evt.title;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === currentId) return { ...m, id: evt.message_id };
+              if (evt.user_message_id && m.id === `u-${currentId}`) return { ...m, id: evt.user_message_id };
+              return m;
+            })
+          );
+          currentId = evt.message_id;
+        } else if (evt.delta) {
+          patchMessage(currentId, (m) => ({ content: m.content + evt.delta }));
+          scrollBottom();
+        } else if (evt.error) {
+          patchMessage(currentId, (m) => ({
+            content: m.content || "Desculpe, tive um problema para responder agora. Tente novamente.",
+            status: "error",
+            streaming: false,
+          }));
+        } else if (evt.done) {
+          patchMessage(currentId, { streaming: false, status: "done" });
+          forgetPending(currentId);
+        }
+      });
+      if (newTitle) setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title: newTitle } : c)));
+      setTimeout(loadConversations, 4000);
+    } catch (e) {
+      patchMessage(currentId, (m) => (m.streaming ? { content: m.content || "Falha de conexão. A resposta continua sendo gerada — reabra a conversa em instantes.", streaming: false } : {}));
+    }
+  }, [loadConversations, patchMessage, scrollBottom]);
+
+  const selectConversation = useCallback(async (id) => {
+    setActiveId(id);
+    setSidebarOpen(false);
+    setInput(localStorage.getItem(draftKey(id)) || "");
+    setNewByConversation((n) => {
+      const copy = { ...n };
+      delete copy[id];
+      return copy;
+    });
+    const { data } = await api.get(`/conversations/${id}`);
+    const pending = data.messages.filter((m) => m.status === "pending");
+    setMessages(data.messages.map((m) => (m.status === "pending" ? { ...m, streaming: true } : m)));
+    for (const p of pending) {
+      rememberPending(p.id, id);
+      setSending(true);
+      openResumeStream(p.id).then((res) => attachStream(p.id, res, id)).finally(() => setSending(false));
+    }
+  }, [attachStream]);
+
   const pollPending = useCallback(async () => {
     try {
       const { data } = await api.get("/conversations/pending");
@@ -130,10 +206,7 @@ export default function Chat() {
         }
       }
     } catch {}
-  }, []);
-
-  const conversationsRef = useRef([]);
-  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+  }, [attachStream, selectConversation]);
 
   useEffect(() => {
     let mounted = true;
@@ -164,78 +237,6 @@ export default function Chat() {
     };
   }, [loadConversations, pollPending]);
 
-  useEffect(() => {
-    if (activeId) localStorage.setItem(activeConversationKey, activeId);
-    else localStorage.removeItem(activeConversationKey);
-  }, [activeId]);
-
-  useEffect(() => {
-    scrollBottom();
-  }, [messages, scrollBottom]);
-
-  useEffect(() => {
-    if (input) localStorage.setItem(draftKey(activeId), input);
-    else localStorage.removeItem(draftKey(activeId));
-  }, [input, activeId]);
-
-  const patchMessage = (id, patch) =>
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...(typeof patch === "function" ? patch(m) : patch) } : m)));
-
-  const attachStream = async (assistantId, res, convId) => {
-    let currentId = assistantId;
-    let newTitle = null;
-    try {
-      await consumeSSE(res, (evt) => {
-        if (evt.start) {
-          newTitle = evt.title;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id === currentId) return { ...m, id: evt.message_id };
-              if (evt.user_message_id && m.id === `u-${currentId}`) return { ...m, id: evt.user_message_id };
-              return m;
-            })
-          );
-          currentId = evt.message_id;
-        } else if (evt.delta) {
-          patchMessage(currentId, (m) => ({ content: m.content + evt.delta }));
-          scrollBottom();
-        } else if (evt.error) {
-          patchMessage(currentId, (m) => ({
-            content: m.content || "Desculpe, tive um problema para responder agora. Tente novamente.",
-            status: "error",
-            streaming: false,
-          }));
-        } else if (evt.done) {
-          patchMessage(currentId, { streaming: false, status: "done" });
-          forgetPending(currentId);
-        }
-      });
-      if (newTitle) setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title: newTitle } : c)));
-      setTimeout(loadConversations, 4000);
-    } catch (e) {
-      patchMessage(currentId, (m) => (m.streaming ? { content: m.content || "Falha de conexão. A resposta continua sendo gerada — reabra a conversa em instantes.", streaming: false } : {}));
-    }
-  };
-
-  const selectConversation = async (id) => {
-    setActiveId(id);
-    setSidebarOpen(false);
-    setInput(localStorage.getItem(draftKey(id)) || "");
-    setNewByConversation((n) => {
-      const copy = { ...n };
-      delete copy[id];
-      return copy;
-    });
-    const { data } = await api.get(`/conversations/${id}`);
-    const pending = data.messages.filter((m) => m.status === "pending");
-    setMessages(data.messages.map((m) => (m.status === "pending" ? { ...m, streaming: true } : m)));
-    for (const p of pending) {
-      rememberPending(p.id, id);
-      setSending(true);
-      openResumeStream(p.id).then((res) => attachStream(p.id, res, id)).finally(() => setSending(false));
-    }
-  };
-
   const restoredConversationRef = useRef(false);
   useEffect(() => {
     if (restoredConversationRef.current || activeId || conversations.length === 0) return;
@@ -243,7 +244,7 @@ export default function Chat() {
     if (!lastId || !conversations.some((c) => c.id === lastId)) return;
     restoredConversationRef.current = true;
     selectConversation(lastId);
-  }, [activeId, conversations]);
+  }, [activeId, conversations, selectConversation]);
 
   const newConversation = () => {
     setActiveId(null);
