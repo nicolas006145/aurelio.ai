@@ -62,7 +62,7 @@ AVAILABLE_VOICES = {
         "id": "male_mature",
         "label": "Aurélio — voz masculina madura",
         "voice": "onyx",
-        "speed": 0.84,
+        "speed": 0.82,
         "gender": "male",
         "persona_name": "Aurélio",
         "description": "Voz grave, serena e pausada. Ideal para quem prefere um mentor masculino.",
@@ -71,7 +71,7 @@ AVAILABLE_VOICES = {
         "id": "female_serene",
         "label": "Clara — voz feminina serena",
         "voice": "shimmer",
-        "speed": 0.92,
+        "speed": 0.95,
         "gender": "female",
         "persona_name": "Clara",
         "description": "Voz suave, acolhedora e serena. Ideal para quem prefere uma mentora feminina.",
@@ -80,7 +80,7 @@ AVAILABLE_VOICES = {
         "id": "female_warm",
         "label": "Lua — voz feminina calorosa",
         "voice": "nova",
-        "speed": 0.90,
+        "speed": 0.93,
         "gender": "female",
         "persona_name": "Lua",
         "description": "Voz calorosa, firme e encorajadora. Perfeita para uma abordagem firme mas afetuosa.",
@@ -89,7 +89,7 @@ AVAILABLE_VOICES = {
         "id": "male_confident",
         "label": "Marco — voz masculina confiante",
         "voice": "echo",
-        "speed": 0.88,
+        "speed": 0.86,
         "gender": "male",
         "persona_name": "Marco",
         "description": "Voz profunda, confiante e direta. Para quem gosta de firmeza com serenidade.",
@@ -114,25 +114,29 @@ def build_system_prompt(persona_name: str, gender: str) -> str:
     voice_desc = (
         "grave, pausado, suave" if gender == "male" else "suave, pausado, acolhedor"
     )
-    return f"""Você é {persona_name}, um mentor e terapeuta de amadurecimento. Seu nome é uma homenagem à filosofia estoica.
+    return f"""Você é {persona_name}, um mentor de amadurecimento. Seu nome é uma homenagem à filosofia estoica.
 
 Quem você é:
 - {persona_gender_desc}
-- Você fala a VERDADE, sem rodeios e sem bajulação. Não passa a mão na cabeça de ninguém, mas nunca humilha.
-- Sua firmeza é acompanhada de respeito, cuidado e calma. Confronta com afeto, não com agressividade.
+- Fala a VERDADE, sem bajulação, mas sem crueldade. Não humilha ninguém. Apenas expõe o que a pessoa já sabe no fundo, mas está evitando olhar.
+- Sua firmeza é acompanhada de afeto: confronta com calma, não com raiva.
 - Inspirado no estoicismo prático: responsabilidade pessoal, disciplina, autocontrole, aceitação do que não se pode mudar e coragem para agir no que se pode.
 
-Como você conversa:
-- Fala em português do Brasil, de forma direta, calorosa, madura e SERENA.
-- Confronta desculpas, vitimização e autoengano com firmeza afetuosa.
-- Faz perguntas provocativas que forçam a pessoa a olhar para dentro.
-- Dá conselhos concretos e acionáveis, não teoria vazia.
-- Respostas de tamanho médio (2 a 4 parágrafos curtos). Sem enrolação, sem listas gigantes, sem jargão de coach.
-- Escreva como quem FALA de forma suave e pausada: frases curtas e médias, ritmo calmo, vírgulas e reticências para pausas naturais. SEU TEXTO SERÁ LIDO EM VOZ ALTA — {voice_desc}.
+Como você conversa (MUITO IMPORTANTE — leia antes de responder):
+- Fala em português do Brasil, como uma pessoa real conversando — não como um livro, coach ou palestra.
+- RITMO VARIADO: misture frases curtas de 4 a 8 palavras com frases médias de 12 a 20 palavras. Frases longas demais cansam. Tudo igual também.
+- ABERTURAS NATURAIS: algumas respostas começam com conectivos que simulam fala: "Veja bem...", "Escuta...", "A realidade é que...", "Não é fácil ouvir isso, mas...", "O ponto crucial aqui é...", "Sabe o que eu acho?". Não todas, só algumas.
+- CONECTIVOS ENTRE FRASES: use "porque", "então", "só que", "mas", "aliás", "quer dizer", "na verdade" para dar fluxo natural.
+- NÃO FAÇA LISTAS. Nunca. Nem numeradas, nem com traços. Escreva parágrafos corridos com ligações naturais.
+- Micro-pausas no texto: reticências (...) para quando a pessoa precisa digerir. Uma ou duas por resposta, não exagere.
+- Perguntas provocativas no final que forçam olhar para dentro — mas perguntas reais, não retóricas óbvias.
+- Conselhos CONCRETOS, específicos, acionáveis. Não "seja melhor". Diga o que fazer AMANHÃ em 1 passo pequeno.
+- Respostas de tamanho médio: 2 a 4 parágrafos curtos. Sem enrolação.
+- Lembre-se: SEU TEXTO SERÁ LIDO EM VOZ ALTA, com voz {voice_desc}. Escreva de forma que ao ser dito em voz alta pareça natural — vírgulas, pontos, pausas, sem frases grudentas ou palavras difíceis.
 - Nunca use formatação markdown: nada de asteriscos, cerquilhas, listas com traço ou número, títulos ou blocos de código.
-- Não é terapeuta clínico. Em crise séria ou risco à vida, indique ajuda profissional (CVV 188 no Brasil).
+- Não é terapeuta clínico. Em risco real, indique ajuda profissional (CVV 188 no Brasil).
 
-Objetivo: ajudar a pessoa a amadurecer de verdade — assumir responsabilidade, parar de se enganar, e agir com coragem e disciplina."""
+Objetivo: ajudar a pessoa a parar de se enganar e agir. Amadurecer de verdade — na prática, não na teoria."""
 
 
 AURELIO_SYSTEM_PROMPT = build_system_prompt("Aurélio", "male")
@@ -161,12 +165,22 @@ def make_title(text: str) -> str:
     return t[:45].rstrip() + "…"
 
 
+_ABBREV_PT = {
+    r"\bvc\b": "você", r"\bvcs\b": "vocês", r"\btb\b": "também", r"\bpq\b": "porque",
+    r"\bblz\b": "beleza", r"\bmt\b": "muito", r"\btd\b": "tudo", r"\btt\b": "tudo",
+    r"\bfdp\b": "filho da puta", r"\bvlw\b": "valeu", r"\bok\b": "ok",
+    r"\bjá\b": "já", r"\bnao\b": "não", r"\bsim\b": "sim",
+}
+
 def clean_for_tts(text: str) -> str:
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)
     text = re.sub(r"[*_#>~|\[\]]", "", text)
     text = text.replace("/", " ou ")
+    text = re.sub(r"(\d+)\s*[-–]\s*(\d+)", r"\1, \2", text)
     text = text.replace("—", ",").replace("–", ",").replace(";", ",")
+    for patt, repl in _ABBREV_PT.items():
+        text = re.sub(patt, repl, text, flags=re.IGNORECASE)
     text = re.sub(r"([!?])\1+", r"\1", text)
     text = re.sub(r"\.{4,}", "...", text)
     text = re.sub(r"\"(.{1,80})\"", r"\1", text)
@@ -611,15 +625,18 @@ async def relay_stream(message_id: str, head: dict):
             yield f"data: {json.dumps({'done': True, 'message_id': message_id})}\n\n"
             return
         content = st["content"]
-        if len(content) > offset:
+        pending = len(content) - offset
+        if pending >= 10 or (pending > 0 and st["done"]):
             yield f"data: {json.dumps({'delta': content[offset:]})}\n\n"
             offset = len(content)
         if st["done"]:
+            if len(content) > offset:
+                yield f"data: {json.dumps({'delta': content[offset:]})}\n\n"
             if st["error"]:
                 yield f"data: {json.dumps({'error': True})}\n\n"
             yield f"data: {json.dumps({'done': True, 'message_id': message_id})}\n\n"
             return
-        await asyncio.sleep(0.04)
+        await asyncio.sleep(0.12)
 
 
 def sse(gen):

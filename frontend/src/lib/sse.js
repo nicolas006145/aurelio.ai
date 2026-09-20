@@ -28,21 +28,60 @@ export async function openResumeStream(messageId) {
   return fetch(`${API}/messages/${messageId}/stream`, { headers: authHeaders() });
 }
 
-// Reads a "data: {json}\n\n" SSE body and calls onEvent for each parsed event.
+const BATCH_WINDOW_MS = 32;
+
 export async function consumeSSE(res, onEvent) {
   if (!res.ok) throw new Error(`stream failed: ${res.status}`);
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split("\n\n");
-    buffer = parts.pop();
-    for (const part of parts) {
-      const line = part.replace(/^data: /, "").trim();
-      if (line) onEvent(JSON.parse(line));
+  let flushTimer = null;
+  let pendingDeltas = "";
+  let pendingOther = [];
+
+  const flush = () => {
+    flushTimer = null;
+    if (pendingDeltas) {
+      onEvent({ delta: pendingDeltas });
+      pendingDeltas = "";
     }
+    for (const ev of pendingOther) onEvent(ev);
+    pendingOther = [];
+  };
+
+  const scheduleFlush = () => {
+    if (flushTimer == null) {
+      flushTimer = setTimeout(flush, BATCH_WINDOW_MS);
+    }
+  };
+
+  const handle = (ev) => {
+    if (typeof ev.delta === "string") {
+      pendingDeltas += ev.delta;
+      scheduleFlush();
+    } else {
+      pendingOther.push(ev);
+      scheduleFlush();
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        const line = part.replace(/^data: /, "").trim();
+        if (line) handle(JSON.parse(line));
+      }
+    }
+  } finally {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    if (pendingDeltas || pendingOther.length) flush();
   }
 }
