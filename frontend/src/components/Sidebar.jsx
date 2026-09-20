@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Plus, Trash2, LogOut, X, BookMarked, ChevronDown } from "lucide-react";
 import { THEMES, themeOf } from "@/lib/themes";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=200&q=80";
 
-function ConversationItem({ c, active, onSelect, onDelete, hasPending, hasNew }) {
+const ConversationItem = memo(function ConversationItem({ c, active, onSelect, onDelete, hasPending, hasNew }) {
   const { Icon } = themeOf(c.theme);
   return (
     <div
@@ -37,7 +37,7 @@ function ConversationItem({ c, active, onSelect, onDelete, hasPending, hasNew })
       </button>
     </div>
   );
-}
+});
 
 function ThemeGroup({ theme, items, activeId, onSelect, onDelete, pendingMap, newMap }) {
   const [open, setOpen] = useState(true);
@@ -97,9 +97,11 @@ export function Sidebar({
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <div className="flex items-center gap-3">
-            <img src={STATUE} alt="Aurélio" className="h-9 w-9 rounded-full object-cover border border-[var(--border-accent)]" />
+            <img src={STATUE} alt={user?.voice_config?.persona_name || "Aurélio"} className="h-9 w-9 rounded-full object-cover border border-[var(--border-accent)]" />
             <div className="leading-tight">
-              <div className="font-serif-display text-xl font-semibold text-[var(--text-primary)]">Aurélio</div>
+              <div className="font-serif-display text-xl font-semibold text-[var(--text-primary)]">
+                {user?.voice_config?.persona_name || "Aurélio"}
+              </div>
               <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">Mentor de amadurecimento</div>
             </div>
           </div>

@@ -60,10 +60,29 @@ export function AuthProvider({ children }) {
     persist(data);
   };
 
-  const register = async (name, email, password) => {
-    const { data } = await api.post("/auth/register", { name, email, password });
+  const register = async (name, email, password, voiceId) => {
+    const payload = { name, email, password };
+    if (voiceId) payload.voice_id = voiceId;
+    const { data } = await api.post("/auth/register", payload);
     persist(data);
+    return data.user;
   };
+
+  const refreshMe = useCallback(async () => {
+    try {
+      const { data } = await api.get("/auth/me");
+      setUser(data);
+      return data;
+    } catch (e) {
+      throw e;
+    }
+  }, []);
+
+  const updateSettings = useCallback(async ({ voice_id }) => {
+    const { data } = await api.patch("/auth/settings", { voice_id });
+    setUser(data);
+    return data;
+  }, []);
 
   const loginWithGoogle = useCallback(async (hint) => {
     if (GOOGLE_CLIENT_ID) {
@@ -186,7 +205,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, register, loginWithGoogle, exchangeSession, logout, showGoogleOneTap }}
+      value={{ user, loading, login, register, loginWithGoogle, exchangeSession, logout, showGoogleOneTap, refreshMe, updateSettings }}
     >
       {children}
     </AuthContext.Provider>

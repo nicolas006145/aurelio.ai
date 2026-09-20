@@ -50,7 +50,53 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aurelio")
 
+_httpx_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(20.0, connect=10.0),
+    limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+)
+
 THEMES = ["disciplina", "relacionamentos", "proposito", "emocoes", "carreira", "autoconhecimento", "outros"]
+
+AVAILABLE_VOICES = {
+    "male_mature": {
+        "id": "male_mature",
+        "label": "Aurélio — voz masculina madura",
+        "voice": "onyx",
+        "speed": 0.84,
+        "gender": "male",
+        "persona_name": "Aurélio",
+        "description": "Voz grave, serena e pausada. Ideal para quem prefere um mentor masculino.",
+    },
+    "female_serene": {
+        "id": "female_serene",
+        "label": "Clara — voz feminina serena",
+        "voice": "shimmer",
+        "speed": 0.92,
+        "gender": "female",
+        "persona_name": "Clara",
+        "description": "Voz suave, acolhedora e serena. Ideal para quem prefere uma mentora feminina.",
+    },
+    "female_warm": {
+        "id": "female_warm",
+        "label": "Lua — voz feminina calorosa",
+        "voice": "nova",
+        "speed": 0.90,
+        "gender": "female",
+        "persona_name": "Lua",
+        "description": "Voz calorosa, firme e encorajadora. Perfeita para uma abordagem firme mas afetuosa.",
+    },
+    "male_confident": {
+        "id": "male_confident",
+        "label": "Marco — voz masculina confiante",
+        "voice": "echo",
+        "speed": 0.88,
+        "gender": "male",
+        "persona_name": "Marco",
+        "description": "Voz profunda, confiante e direta. Para quem gosta de firmeza com serenidade.",
+    },
+}
+
+DEFAULT_VOICE_ID = "male_mature"
 
 # ---------------------------------------------------------------- rate / context limits
 _MAX_USER_TURNS_PER_MINUTE = 12
@@ -59,10 +105,19 @@ _MAX_CONTEXT_CHARS = 14000
 _USER_RATE_WINDOW: dict = {}
 
 # ---------------------------------------------------------------- persona
-AURELIO_SYSTEM_PROMPT = """Você é Aurélio, um mentor e terapeuta de amadurecimento. Seu nome é uma homenagem a Marco Aurélio e à filosofia estoica.
+def build_system_prompt(persona_name: str, gender: str) -> str:
+    persona_gender_desc = (
+        "Um homem maduro, sereno e sábio, com uma voz grave, suave e pausada."
+        if gender == "male"
+        else "Uma mulher madura, serena e sábia, com uma voz suave, acolhedora e pausada."
+    )
+    voice_desc = (
+        "grave, pausado, suave" if gender == "male" else "suave, pausado, acolhedor"
+    )
+    return f"""Você é {persona_name}, um mentor e terapeuta de amadurecimento. Seu nome é uma homenagem à filosofia estoica.
 
 Quem você é:
-- Um homem maduro, sereno e sábio, com uma voz grave, suave e pausada.
+- {persona_gender_desc}
 - Você fala a VERDADE, sem rodeios e sem bajulação. Não passa a mão na cabeça de ninguém, mas nunca humilha.
 - Sua firmeza é acompanhada de respeito, cuidado e calma. Confronta com afeto, não com agressividade.
 - Inspirado no estoicismo prático: responsabilidade pessoal, disciplina, autocontrole, aceitação do que não se pode mudar e coragem para agir no que se pode.
@@ -73,15 +128,30 @@ Como você conversa:
 - Faz perguntas provocativas que forçam a pessoa a olhar para dentro.
 - Dá conselhos concretos e acionáveis, não teoria vazia.
 - Respostas de tamanho médio (2 a 4 parágrafos curtos). Sem enrolação, sem listas gigantes, sem jargão de coach.
-- Escreva como quem FALA de forma suave e pausada: frases curtas e médias, ritmo calmo, vírgulas e reticências para pausas naturais. SEU TEXTO SERÁ LIDO EM VOZ ALTA — grave, pausado, suave.
+- Escreva como quem FALA de forma suave e pausada: frases curtas e médias, ritmo calmo, vírgulas e reticências para pausas naturais. SEU TEXTO SERÁ LIDO EM VOZ ALTA — {voice_desc}.
 - Nunca use formatação markdown: nada de asteriscos, cerquilhas, listas com traço ou número, títulos ou blocos de código.
 - Não é terapeuta clínico. Em crise séria ou risco à vida, indique ajuda profissional (CVV 188 no Brasil).
 
 Objetivo: ajudar a pessoa a amadurecer de verdade — assumir responsabilidade, parar de se enganar, e agir com coragem e disciplina."""
 
+
+AURELIO_SYSTEM_PROMPT = build_system_prompt("Aurélio", "male")
+
 VOICE_MODE_PROMPT = """
 
 MODO VOZ EM TEMPO REAL: a pessoa está numa ligação com você. Responda CURTO, suave, conversacional — UM só parágrafo de 30 a 80 palavras. Fale com calma, como numa conversa de verdade. Quando couber, termine com uma pergunta curta para manter o diálogo."""
+
+
+def get_voice_config(voice_id: str) -> dict:
+    return AVAILABLE_VOICES.get(voice_id) or AVAILABLE_VOICES[DEFAULT_VOICE_ID]
+
+
+def default_user_settings() -> dict:
+    return {
+        "voice_id": DEFAULT_VOICE_ID,
+        "tts_speed": None,
+        "tts_model": "tts-1-hd",
+    }
 
 
 def make_title(text: str) -> str:
@@ -95,9 +165,12 @@ def clean_for_tts(text: str) -> str:
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)
     text = re.sub(r"[*_#>~|\[\]]", "", text)
+    text = text.replace("/", " ou ")
     text = text.replace("—", ",").replace("–", ",").replace(";", ",")
-    text = re.sub(r"([!?.])\1+", r"\1", text)
+    text = re.sub(r"([!?])\1+", r"\1", text)
+    text = re.sub(r"\.{4,}", "...", text)
     text = re.sub(r"\"(.{1,80})\"", r"\1", text)
+    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:3800]
 
@@ -126,11 +199,14 @@ def create_access_token(user_id: str, email: str) -> str:
 
 
 def public_user(user: dict) -> dict:
+    settings = user.get("settings") or default_user_settings()
     return {
         "id": str(user["_id"]),
         "name": user.get("name", ""),
         "email": user["email"],
         "picture": user.get("picture"),
+        "settings": settings,
+        "voice_config": get_voice_config(settings.get("voice_id") or DEFAULT_VOICE_ID),
     }
 
 
@@ -173,10 +249,15 @@ async def get_current_user(request: Request) -> dict:
 
 
 # ---------------------------------------------------------------- models
+class VoiceSettingsInput(BaseModel):
+    voice_id: Optional[str] = None
+
+
 class RegisterInput(BaseModel):
     name: str
     email: EmailStr
     password: str = Field(min_length=6)
+    voice_id: Optional[str] = None
 
 
 class LoginInput(BaseModel):
@@ -199,6 +280,7 @@ class ChatInput(BaseModel):
 
 class TTSInput(BaseModel):
     text: str
+    voice_id: Optional[str] = None
 
 
 class ThemeInput(BaseModel):
@@ -218,11 +300,14 @@ async def register(data: RegisterInput):
     email = data.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Este e-mail já está cadastrado")
+    voice_id = data.voice_id if data.voice_id in AVAILABLE_VOICES else DEFAULT_VOICE_ID
+    settings = {**default_user_settings(), "voice_id": voice_id}
     doc = {
         "name": data.name.strip(),
         "email": email,
         "password_hash": hash_password(data.password),
         "provider": "password",
+        "settings": settings,
         "created_at": now_iso(),
     }
     res = await db.users.insert_one(doc)
@@ -244,8 +329,7 @@ async def login(data: LoginInput):
 @api_router.post("/auth/session")
 async def google_session(data: SessionInput, response: Response):
     try:
-        async with httpx.AsyncClient(timeout=20) as http:
-            r = await http.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": data.session_id})
+        r = await _httpx_client.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": data.session_id})
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="Não foi possível validar o login com Google")
     if r.status_code != 200:
@@ -260,6 +344,7 @@ async def google_session(data: SessionInput, response: Response):
             "email": email,
             "picture": info.get("picture"),
             "provider": "google",
+            "settings": default_user_settings(),
             "created_at": now_iso(),
         }
         res = await db.users.insert_one(doc)
@@ -271,6 +356,8 @@ async def google_session(data: SessionInput, response: Response):
             updates["picture"] = info["picture"]
         if not user.get("name") and info.get("name"):
             updates["name"] = info["name"]
+        if not user.get("settings"):
+            updates["settings"] = default_user_settings()
         if updates:
             await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
             user.update(updates)
@@ -312,35 +399,43 @@ async def upsert_google_user(info: dict) -> dict:
         doc = {
             **updates,
             "email": email,
+            "settings": default_user_settings(),
             "created_at": now_iso(),
         }
         res = await db.users.insert_one(doc)
         doc["_id"] = res.inserted_id
         return doc
 
+    if not user.get("settings"):
+        updates["settings"] = default_user_settings()
     await db.users.update_one({"_id": user["_id"]}, {"$set": updates})
     user.update(updates)
     return user
 
 
+async def get_user_voice_config(user_id: str) -> dict:
+    user = await db.users.find_one({"_id": ObjectId(user_id)}, {"_id": 0, "settings": 1})
+    voice_id = (user or {}).get("settings", {}).get("voice_id") or DEFAULT_VOICE_ID
+    return get_voice_config(voice_id)
+
+
 @api_router.post("/auth/google")
 async def google_auth(data: GoogleAuthInput, response: Response):
     try:
-        async with httpx.AsyncClient(timeout=20) as http:
-            if data.credential:
-                r = await http.get(GOOGLE_TOKENINFO_URL, params={"id_token": data.credential})
-                if r.status_code != 200:
-                    raise HTTPException(status_code=401, detail="Login com Google inválido ou expirado")
-                info = r.json()
-                if GOOGLE_CLIENT_ID and info.get("aud") != GOOGLE_CLIENT_ID:
-                    raise HTTPException(status_code=401, detail="Login com Google não pertence a este aplicativo")
-            elif data.access_token:
-                r = await http.get(GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {data.access_token}"})
-                if r.status_code != 200:
-                    raise HTTPException(status_code=401, detail="Login com Google inválido ou expirado")
-                info = r.json()
-            else:
-                raise HTTPException(status_code=400, detail="Token do Google ausente")
+        if data.credential:
+            r = await _httpx_client.get(GOOGLE_TOKENINFO_URL, params={"id_token": data.credential})
+            if r.status_code != 200:
+                raise HTTPException(status_code=401, detail="Login com Google inválido ou expirado")
+            info = r.json()
+            if GOOGLE_CLIENT_ID and info.get("aud") != GOOGLE_CLIENT_ID:
+                raise HTTPException(status_code=401, detail="Login com Google não pertence a este aplicativo")
+        elif data.access_token:
+            r = await _httpx_client.get(GOOGLE_USERINFO_URL, headers={"Authorization": f"Bearer {data.access_token}"})
+            if r.status_code != 200:
+                raise HTTPException(status_code=401, detail="Login com Google inválido ou expirado")
+            info = r.json()
+        else:
+            raise HTTPException(status_code=400, detail="Token do Google ausente")
     except HTTPException:
         raise
     except httpx.HTTPError:
@@ -373,6 +468,26 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 
+@api_router.get("/voices")
+async def list_voices():
+    return {"voices": list(AVAILABLE_VOICES.values())}
+
+
+@api_router.patch("/auth/settings")
+async def update_settings(data: VoiceSettingsInput, user: dict = Depends(get_current_user)):
+    updates = {}
+    if data.voice_id:
+        if data.voice_id not in AVAILABLE_VOICES:
+            raise HTTPException(status_code=400, detail="Voz inválida")
+        updates["settings.voice_id"] = data.voice_id
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nenhuma alteração solicitada")
+    updates["updated_at"] = now_iso()
+    await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": updates})
+    updated = await db.users.find_one({"_id": ObjectId(user["id"])})
+    return public_user(updated)
+
+
 # ---------------------------------------------------------------- LLM helpers
 def check_user_rate(user_id: str) -> bool:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -390,8 +505,9 @@ def make_llm(session_id: str, system_message: str) -> LlmChat:
     ).with_model("anthropic", "claude-sonnet-4-6")
 
 
-def build_system(prior: list, mode: str) -> str:
-    system = AURELIO_SYSTEM_PROMPT
+def build_system(prior: list, mode: str, voice_id: str = DEFAULT_VOICE_ID) -> str:
+    vc = get_voice_config(voice_id)
+    system = build_system_prompt(vc["persona_name"], vc["gender"])
     if mode == "voice":
         system += VOICE_MODE_PROMPT
 
@@ -401,7 +517,7 @@ def build_system(prior: list, mode: str) -> str:
     for m in reversed(trimmed):
         if not m.get("content"):
             continue
-        who = "Pessoa" if m["role"] == "user" else "Aurélio"
+        who = "Pessoa" if m["role"] == "user" else vc["persona_name"]
         line = f"{who}: {m['content']}"
         char_count += len(line)
         if char_count > _MAX_CONTEXT_CHARS:
@@ -434,10 +550,10 @@ _live: dict = {}
 _tasks = set()
 
 
-async def generate_reply(conversation_id: str, message_id: str, user_text: str, prior: list, mode: str = "text"):
+async def generate_reply(conversation_id: str, message_id: str, user_text: str, prior: list, mode: str = "text", voice_id: str = DEFAULT_VOICE_ID):
     state = _live[message_id] = {"content": "", "done": False, "error": False}
     try:
-        llm = make_llm(conversation_id, build_system(prior, mode))
+        llm = make_llm(conversation_id, build_system(prior, mode, voice_id))
         async for ev in llm.stream_message(UserMessage(text=user_text)):
             if isinstance(ev, TextDelta):
                 state["content"] += ev.content
@@ -462,16 +578,16 @@ async def generate_reply(conversation_id: str, message_id: str, user_text: str, 
     state["done"] = True
 
     if not state["error"] and mode == "text":
-        asyncio.create_task(_prewarm_audio(full))
+        asyncio.create_task(_prewarm_audio(full, voice_id))
     if len(prior) == 0:
         asyncio.create_task(classify_theme(conversation_id, user_text))
 
-    await asyncio.sleep(90)
+    await asyncio.sleep(30)
     _live.pop(message_id, None)
 
 
-def spawn_reply(conversation_id: str, message_id: str, user_text: str, prior: list, mode: str = "text"):
-    task = asyncio.create_task(generate_reply(conversation_id, message_id, user_text, prior, mode))
+def spawn_reply(conversation_id: str, message_id: str, user_text: str, prior: list, mode: str = "text", voice_id: str = DEFAULT_VOICE_ID):
+    task = asyncio.create_task(generate_reply(conversation_id, message_id, user_text, prior, mode, voice_id))
     _tasks.add(task)
     task.add_done_callback(_tasks.discard)
     return task
@@ -513,7 +629,7 @@ def sse(gen):
     )
 
 
-async def start_turn(conversation_id: str, user_text: str, mode: str):
+async def start_turn(conversation_id: str, user_text: str, mode: str, voice_id: str = DEFAULT_VOICE_ID):
     prior = await db.messages.find(
         {"conversation_id": conversation_id, "status": {"$ne": "error"}}, {"_id": 0}
     ).sort("created_at", 1).to_list(1000)
@@ -536,7 +652,7 @@ async def start_turn(conversation_id: str, user_text: str, mode: str):
         await db.conversations.update_one({"id": conversation_id}, {"$set": {"title": new_title}})
     await db.conversations.update_one({"id": conversation_id}, {"$set": {"updated_at": ts}})
 
-    task = spawn_reply(conversation_id, assistant_msg["id"], user_text, prior, mode)
+    task = spawn_reply(conversation_id, assistant_msg["id"], user_text, prior, mode, voice_id)
     return user_msg, assistant_msg, new_title, task
 
 
@@ -614,7 +730,8 @@ async def chat(conversation_id: str, data: ChatInput, user: dict = Depends(get_c
         raise HTTPException(status_code=400, detail="Mensagem vazia")
     if not check_user_rate(user["id"]):
         raise HTTPException(status_code=429, detail="Calma aí. Espere um pouco antes de enviar outra mensagem.")
-    user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, text, "text")
+    vc = await get_user_voice_config(user["id"])
+    user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, text, "text", vc["id"])
     head = {"start": True, "message_id": assistant_msg["id"], "user_message_id": user_msg["id"], "title": new_title}
     return sse(relay_stream(assistant_msg["id"], head))
 
@@ -627,7 +744,8 @@ async def start_chat(conversation_id: str, data: ChatInput, user: dict = Depends
         raise HTTPException(status_code=400, detail="Mensagem vazia")
     if not check_user_rate(user["id"]):
         raise HTTPException(status_code=429, detail="Calma aí. Espere um pouco antes de enviar outra mensagem.")
-    user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, text, "text")
+    vc = await get_user_voice_config(user["id"])
+    user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, text, "text", vc["id"])
     return {
         "start": True,
         "message_id": assistant_msg["id"],
@@ -678,15 +796,16 @@ async def voice_turn(conversation_id: str, audio: UploadFile = File(...), user: 
     if len(transcript) < 2:
         return {"transcript": "", "reply": None}
 
-    user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, transcript, "voice")
+    vc = await get_user_voice_config(user["id"])
+    user_msg, assistant_msg, new_title, _ = await start_turn(conversation_id, transcript, "voice", vc["id"])
     while not _live.get(assistant_msg["id"], {}).get("done"):
         await asyncio.sleep(0.05)
     state = _live[assistant_msg["id"]]
     if state["error"]:
-        raise HTTPException(status_code=500, detail="Aurélio não conseguiu responder agora")
+        raise HTTPException(status_code=500, detail="Mentor não conseguiu responder agora")
     reply = state["content"].strip()
     try:
-        await _synth_cached(reply)
+        await _synth_cached(reply, vc["id"])
     except Exception:
         logger.exception("voice TTS prewarm failed")
     return {
@@ -697,7 +816,7 @@ async def voice_turn(conversation_id: str, audio: UploadFile = File(...), user: 
 
 # ---------------------------------------------------------------- TTS
 _tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
-TTS_VOICE, TTS_MODEL, TTS_SPEED = "onyx", "tts-1-hd", 0.86
+TTS_MODEL = "tts-1-hd"
 
 DEMO_LINE = (
     "Você não precisa de mais motivação. Precisa de honestidade. "
@@ -705,20 +824,22 @@ DEMO_LINE = (
 )
 
 
-def tts_key(text: str) -> str:
-    return hashlib.sha256(f"{text}|{TTS_VOICE}|{TTS_SPEED}|{TTS_MODEL}|mp3".encode()).hexdigest()
+def tts_key(text: str, voice_id: str) -> str:
+    vc = get_voice_config(voice_id)
+    return hashlib.sha256(f"{text}|{vc['voice']}|{vc['speed']}|{TTS_MODEL}|mp3".encode()).hexdigest()
 
 
-async def _synth_cached(text: str) -> bytes:
+async def _synth_cached(text: str, voice_id: str = DEFAULT_VOICE_ID) -> bytes:
     text = clean_for_tts(text)
     if not text:
         raise ValueError("Texto vazio")
-    key = tts_key(text)
+    vc = get_voice_config(voice_id)
+    key = tts_key(text, voice_id)
     cached = await db.tts_cache.find_one({"key": key}, {"_id": 0, "audio": 1})
     if cached:
         return bytes(cached["audio"])
     audio = await _tts.generate_speech(
-        text=text, model=TTS_MODEL, voice=TTS_VOICE, speed=TTS_SPEED, response_format="mp3",
+        text=text, model=TTS_MODEL, voice=vc["voice"], speed=vc["speed"], response_format="mp3",
     )
     await db.tts_cache.update_one(
         {"key": key}, {"$set": {"audio": Binary(audio), "created_at": now_iso()}}, upsert=True
@@ -726,9 +847,9 @@ async def _synth_cached(text: str) -> bytes:
     return audio
 
 
-async def _prewarm_audio(text: str):
+async def _prewarm_audio(text: str, voice_id: str = DEFAULT_VOICE_ID):
     try:
-        await _synth_cached(text)
+        await _synth_cached(text, voice_id)
     except Exception:
         logger.exception("TTS prewarm failed")
 
@@ -738,9 +859,10 @@ def audio_response(audio: bytes) -> Response:
 
 
 @api_router.get("/tts/demo")
-async def tts_demo():
+async def tts_demo(voice_id: str = DEFAULT_VOICE_ID):
     try:
-        return audio_response(await _synth_cached(DEMO_LINE))
+        vid = voice_id if voice_id in AVAILABLE_VOICES else DEFAULT_VOICE_ID
+        return audio_response(await _synth_cached(DEMO_LINE, vid))
     except Exception as e:
         logger.exception("TTS demo error")
         raise HTTPException(status_code=500, detail=f"Falha na síntese de voz: {e}")
@@ -751,7 +873,8 @@ async def tts(data: TTSInput, user: dict = Depends(get_current_user)):
     if not clean_for_tts(data.text):
         raise HTTPException(status_code=400, detail="Texto vazio")
     try:
-        return audio_response(await _synth_cached(data.text))
+        vid = data.voice_id if data.voice_id in AVAILABLE_VOICES else (await get_user_voice_config(user["id"]))["id"]
+        return audio_response(await _synth_cached(data.text, vid))
     except Exception as e:
         logger.exception("TTS error")
         raise HTTPException(status_code=500, detail=f"Falha na síntese de voz: {e}")
@@ -764,7 +887,8 @@ async def message_audio(message_id: str, user: dict = Depends(get_current_user))
         raise HTTPException(status_code=404, detail="Mensagem não encontrada")
     await owned_conversation(msg["conversation_id"], user)
     try:
-        return audio_response(await _synth_cached(msg["content"]))
+        vc = await get_user_voice_config(user["id"])
+        return audio_response(await _synth_cached(msg["content"], vc["id"]))
     except Exception as e:
         logger.exception("TTS error")
         raise HTTPException(status_code=500, detail=f"Falha na síntese de voz: {e}")
@@ -779,13 +903,14 @@ async def message_audio_stream(message_id: str, user: dict = Depends(get_current
     text = clean_for_tts(msg.get("content", ""))
     if not text:
         raise HTTPException(status_code=400, detail="Sem texto para sintetizar")
-    key = tts_key(text)
+    vc = await get_user_voice_config(user["id"])
+    key = tts_key(text, vc["id"])
     cached = await db.tts_cache.find_one({"key": key}, {"_id": 0, "audio": 1})
     if cached:
         return audio_response(bytes(cached["audio"]))
     try:
         audio_iter = _tts.generate_speech_streaming(
-            text=text, model=TTS_MODEL, voice=TTS_VOICE, speed=TTS_SPEED, response_format="mp3",
+            text=text, model=TTS_MODEL, voice=vc["voice"], speed=vc["speed"], response_format="mp3",
         )
     except Exception:
         audio_iter = None
@@ -808,7 +933,7 @@ async def message_audio_stream(message_id: str, user: dict = Depends(get_current
             headers={"Cache-Control": "private, max-age=86400"},
         )
     try:
-        return audio_response(await _synth_cached(msg["content"]))
+        return audio_response(await _synth_cached(msg["content"], vc["id"]))
     except Exception as e:
         logger.exception("TTS stream fallback error")
         raise HTTPException(status_code=500, detail=f"Falha na voz: {e}")
@@ -816,15 +941,25 @@ async def message_audio_stream(message_id: str, user: dict = Depends(get_current
 
 # ---------------------------------------------------------------- daily reflection
 REFLECTION_PROMPT = (
-    "Escreva a Reflexão do Dia de Aurélio para {date}: uma provocação honesta e madura, de duas a três frases, "
+    "Escreva a Reflexão do Dia de hoje ({date}): uma provocação honesta e madura, de duas a três frases, "
     "em português do Brasil, para a pessoa começar o dia encarando a verdade sobre si mesma. Tema de hoje: {theme}. "
-    "Texto corrido, sem markdown, sem aspas, sem título, sem saudação. Termine com uma pergunta curta e incômoda."
+    "Texto corrido, sem markdown, sem aspas, sem título, sem saudação, sem assinatura. "
+    "Escreva em primeira pessoa do singular, como um mentor ou mentora sábio(a). "
+    "Termine com uma pergunta curta e incômoda."
 )
 REFLECTION_THEMES = [
     "responsabilidade pessoal", "disciplina e constância", "coragem de agir com medo", "aceitar o que não se controla",
     "parar de se vitimizar", "relacionamentos honestos", "propósito e direção", "autoengano", "o valor do tempo",
     "silêncio e presença", "orgulho e humildade", "o que você está adiando", "gratidão sem ilusão", "conforto que enfraquece",
 ]
+
+
+REFLECTION_SYSTEM_PROMPT = """Você é um mentor ou mentora de amadurecimento sábio e sereno.
+Fala a verdade, sem rodeios e sem bajulação, com respeito e calma.
+Inspirado no estoicismo prático: responsabilidade pessoal, disciplina, autocontrole.
+Fala em português do Brasil, de forma direta, calorosa, madura e SERENA.
+Escreva como quem fala de forma suave e pausada: frases curtas e médias, ritmo calmo.
+Nunca use formatação markdown."""
 
 
 async def get_or_create_reflection() -> dict:
@@ -836,7 +971,7 @@ async def get_or_create_reflection() -> dict:
     theme = REFLECTION_THEMES[today.toordinal() % len(REFLECTION_THEMES)]
     pretty = today.strftime("%d/%m/%Y")
     try:
-        llm = make_llm(f"reflection-{date_key}", AURELIO_SYSTEM_PROMPT)
+        llm = make_llm(f"reflection-{date_key}", REFLECTION_SYSTEM_PROMPT)
         text = (await llm.send_message(UserMessage(text=REFLECTION_PROMPT.format(date=pretty, theme=theme)))).strip()
         text = clean_for_tts(text) if "*" in text or "#" in text else text
     except Exception:
@@ -857,7 +992,8 @@ async def reflection_today(user: dict = Depends(get_current_user)):
 async def reflection_today_audio(user: dict = Depends(get_current_user)):
     doc = await get_or_create_reflection()
     try:
-        return audio_response(await _synth_cached(doc["text"]))
+        vc = await get_user_voice_config(user["id"])
+        return audio_response(await _synth_cached(doc["text"], vc["id"]))
     except Exception as e:
         logger.exception("reflection TTS error")
         raise HTTPException(status_code=500, detail=f"Falha na síntese de voz: {e}")
@@ -915,6 +1051,7 @@ async def startup():
     await db.conversations.create_index("user_id")
     await db.messages.create_index("conversation_id")
     await db.messages.create_index("id")
+    await db.messages.create_index([("conversation_id", 1), ("created_at", 1)])
     await db.messages.create_index([("status", 1), ("created_at", -1)])
     await db.journal_entries.create_index("user_id")
     await db.tts_cache.create_index("key", unique=True)
@@ -944,6 +1081,7 @@ async def startup():
         conv = await db.conversations.find_one({"id": cid}, {"_id": 0, "user_id": 1})
         if not conv:
             continue
+        vc = await get_user_voice_config(conv["user_id"])
         prior = await db.messages.find(
             {"conversation_id": cid, "status": {"$ne": "error"}, "id": {"$ne": mid}},
             {"_id": 0},
@@ -956,7 +1094,7 @@ async def startup():
         prior = [x for x in prior if x.get("content") and x["id"] != mid]
         prior = prior[:-1] if prior and prior[-1]["role"] == "user" else prior
         if user_msg and regenerated < 60:
-            spawn_reply(cid, mid, user_msg, prior, "text")
+            spawn_reply(cid, mid, user_msg, prior, "text", vc["id"])
             regenerated += 1
 
     if regenerated:
@@ -965,4 +1103,8 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    try:
+        await _httpx_client.aclose()
+    except Exception:
+        pass
     client.close()

@@ -2,7 +2,7 @@ import { Sun, Volume2, Square, Loader2, MessageSquare, BookMarked, X, Check } fr
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying, isLoading, onDiscuss, onSaveQuote }) {
+export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying, isLoading, onDiscuss, onSaveQuote, personaName = "Aurélio" }) {
   const [saved, setSaved] = useState(false);
   if (!reflection) return null;
 
@@ -58,7 +58,7 @@ export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying,
               >
                 {reflection.text}
               </p>
-              <p className="mt-4 text-right text-sm text-[var(--text-muted)]">— Aurélio</p>
+              <p className="mt-4 text-right text-sm text-[var(--text-muted)]">— {personaName}</p>
 
               <div className="mt-7 flex flex-wrap gap-2.5">
                 <button

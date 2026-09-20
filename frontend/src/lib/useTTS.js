@@ -1,7 +1,6 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { API } from "@/lib/api";
 
-// Shared single audio element so only one plays at a time.
 let currentAudio = null;
 
 export function stopAllAudio() {
@@ -11,17 +10,35 @@ export function stopAllAudio() {
   }
 }
 
+function revokeAll(urls) {
+  for (const url of urls) {
+    try { URL.revokeObjectURL(url); } catch {}
+  }
+}
+
 export function useTTS() {
   const [playingId, setPlayingId] = useState(null);
   const [loadingId, setLoadingId] = useState(null);
   const cache = useRef({});
+
+  useEffect(() => {
+    return () => {
+      try { stopAllAudio(); } catch {}
+      revokeAll(Object.values(cache.current));
+      cache.current = {};
+    };
+  }, []);
 
   const stop = useCallback(() => {
     stopAllAudio();
     setPlayingId(null);
   }, []);
 
-  // opts: { demo: true } | { url: "/messages/:id/audio" } | none (POST /tts with text)
+  const clearCache = useCallback(() => {
+    revokeAll(Object.values(cache.current));
+    cache.current = {};
+  }, []);
+
   const speak = useCallback(
     async (id, text, opts = {}) => {
       if (playingId === id) {
@@ -36,14 +53,17 @@ export function useTTS() {
           const token = localStorage.getItem("aurelio_token");
           let res;
           if (opts.demo) {
-            res = await fetch(`${API}/tts/demo`);
+            const qs = opts.voice_id ? `?voice_id=${encodeURIComponent(opts.voice_id)}` : "";
+            res = await fetch(`${API}/tts/demo${qs}`);
           } else if (opts.url) {
             res = await fetch(`${API}${opts.url}`, { headers: { Authorization: `Bearer ${token}` } });
           } else {
+            const body = { text };
+            if (opts.voice_id) body.voice_id = opts.voice_id;
             res = await fetch(`${API}/tts`, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-              body: JSON.stringify({ text }),
+              body: JSON.stringify(body),
             });
           }
           if (!res.ok) throw new Error("tts failed");
@@ -65,5 +85,5 @@ export function useTTS() {
     [playingId, stop]
   );
 
-  return { speak, stop, playingId, loadingId };
+  return { speak, stop, playingId, loadingId, clearCache };
 }

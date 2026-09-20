@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, Sparkles, SkipForward } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiErrorDetail } from "@/lib/api";
+import { VoiceSettingsDialog } from "@/components/VoiceSettingsDialog";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=1000&q=85";
@@ -15,21 +16,31 @@ export default function Auth() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login, register, loginWithGoogle, showGoogleOneTap } = useAuth();
+  const [pendingUser, setPendingUser] = useState(null);
+  const [showVoiceSetup, setShowVoiceSetup] = useState(false);
+  const [voiceSaving, setVoiceSaving] = useState(false);
+  const { login, register, loginWithGoogle, showGoogleOneTap, updateSettings } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
     showGoogleOneTap();
   }, [showGoogleOneTap]);
 
+  const goToChat = () => navigate("/chat");
+
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
-      if (mode === "login") await login(email, password);
-      else await register(name, email, password);
-      navigate("/chat");
+      if (mode === "login") {
+        await login(email, password);
+        navigate("/chat");
+      } else {
+        const user = await register(name, email, password);
+        setPendingUser(user);
+        setShowVoiceSetup(true);
+      }
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {
@@ -41,12 +52,23 @@ export default function Auth() {
     setError("");
     setLoading(true);
     try {
-      await loginWithGoogle(email || undefined);
-      navigate("/chat");
+      const user = await loginWithGoogle(email || undefined);
+      setPendingUser(user);
+      setShowVoiceSetup(true);
     } catch (err) {
       setError(formatApiErrorDetail(err.response?.data?.detail) || err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const saveVoice = async (voiceId) => {
+    setVoiceSaving(true);
+    try {
+      await updateSettings({ voice_id: voiceId });
+      goToChat();
+    } finally {
+      setVoiceSaving(false);
     }
   };
 
@@ -190,6 +212,30 @@ export default function Auth() {
           </p>
         </motion.div>
       </div>
+
+      <VoiceSettingsDialog
+        open={showVoiceSetup}
+        onOpenChange={(v) => {
+          if (!v) goToChat();
+          setShowVoiceSetup(v);
+        }}
+        selectedVoiceId={pendingUser?.settings?.voice_id}
+        onSave={saveVoice}
+        title="Configure seu mentor"
+        description="Bem-vindo! Antes de começar, escolha a voz que vai te acompanhar nas reflexões. Você pode mudar isso depois."
+        saveLabel={voiceSaving ? "Salvando…" : "Continuar com essa voz"}
+      />
+      {showVoiceSetup && (
+        <div className="fixed z-[60] left-1/2 top-[calc(50%+min(60vh,480px)/2+12px)] -translate-x-1/2 sm:top-[calc(50%+420px/2+20px)]">
+          <button
+            type="button"
+            onClick={goToChat}
+            className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-main)]/95 backdrop-blur px-4 py-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-accent)] transition-colors"
+          >
+            <SkipForward size={14} /> Pular por enquanto
+          </button>
+        </div>
+      )}
     </div>
   );
 }

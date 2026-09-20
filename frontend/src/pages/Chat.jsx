@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Menu, SendHorizontal, Sparkles, Phone, Sun } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Menu, SendHorizontal, Sparkles, Phone, Sun, Settings, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
@@ -11,6 +12,7 @@ import { ThemeToggle, useTheme } from "@/components/ThemeToggle";
 import { DailyReflection } from "@/components/DailyReflection";
 import { JournalDrawer } from "@/components/JournalDrawer";
 import { VoiceCall } from "@/components/VoiceCall";
+import { VoiceSettingsDialog } from "@/components/VoiceSettingsDialog";
 import { useVoiceCall } from "@/lib/useVoiceCall";
 import { useTTS } from "@/lib/useTTS";
 
@@ -50,9 +52,10 @@ function forgetPending(messageId) {
 }
 
 export default function Chat() {
-  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout, updateSettings } = useAuth();
   const { theme, toggle } = useTheme();
-  const { speak, playingId, loadingId } = useTTS();
+  const { speak, stop, playingId, loadingId, clearCache } = useTTS();
 
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -66,6 +69,8 @@ export default function Chat() {
   const [reflectionOpen, setReflectionOpen] = useState(false);
   const [pendingByConversation, setPendingByConversation] = useState({});
   const [newByConversation, setNewByConversation] = useState({});
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false);
+  const [savingVoice, setSavingVoice] = useState(false);
   const notifiedRef = useRef(new Set());
 
   const activeIdRef = useRef(null);
@@ -341,6 +346,22 @@ export default function Chat() {
     }
   };
 
+  const saveVoiceSettings = async (voiceId) => {
+    setSavingVoice(true);
+    try {
+      await updateSettings({ voice_id: voiceId });
+      stop();
+      clearCache();
+      toast.success("Voz do mentor atualizada.", { description: "Todas as próximas respostas usarão a nova voz." });
+      setVoiceSettingsOpen(false);
+    } catch {
+      toast.error("Não foi possível atualizar a voz. Tente novamente.");
+    } finally {
+      setSavingVoice(false);
+    }
+  };
+
+  const personaName = user?.voice_config?.persona_name || "Aurélio";
   const activeConvo = conversations.find((c) => c.id === activeId);
 
   return (
@@ -362,11 +383,21 @@ export default function Chat() {
 
       <main className="flex-1 flex flex-col min-w-0">
         <header className="flex items-center justify-between gap-2 px-4 md:px-6 py-3.5 border-b border-[var(--border)]">
-          <button data-testid="chat-sidebar-toggle" className="md:hidden text-[var(--text-secondary)]" onClick={() => setSidebarOpen(true)}>
-            <Menu size={22} />
-          </button>
-          <div className="font-serif-display text-lg font-semibold text-[var(--text-primary)] md:hidden">Aurélio</div>
-          <div className="hidden md:block eyebrow truncate">Conversa honesta sobre amadurecimento</div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/")}
+              className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors"
+              aria-label="Voltar para a página inicial"
+              title="Voltar para a página inicial"
+            >
+              <Home size={16} />
+            </button>
+            <button data-testid="chat-sidebar-toggle" className="md:hidden text-[var(--text-secondary)]" onClick={() => setSidebarOpen(true)}>
+              <Menu size={22} />
+            </button>
+            <div className="font-serif-display text-lg font-semibold text-[var(--text-primary)] md:hidden">{personaName}</div>
+            <div className="hidden md:block eyebrow truncate">Conversa honesta sobre amadurecimento</div>
+          </div>
           <div className="flex items-center gap-2">
             {activeConvo && (
               <select
@@ -381,6 +412,15 @@ export default function Chat() {
                 ))}
               </select>
             )}
+            <button
+              onClick={() => setVoiceSettingsOpen(true)}
+              className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors"
+              aria-label="Configurações do mentor"
+              title="Configurar voz do mentor"
+              data-testid="chat-voice-settings-button"
+            >
+              <Settings size={16} />
+            </button>
             <button
               data-testid="open-reflection-button"
               onClick={() => setReflectionOpen(true)}
@@ -397,9 +437,9 @@ export default function Chat() {
         <div ref={feedRef} className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center px-6 text-center max-w-xl mx-auto">
-              <img src={STATUE} alt="Aurélio" className="h-20 w-20 rounded-full object-cover border-2 border-[var(--border-accent)] mb-6" />
+              <img src={STATUE} alt={personaName} className="h-20 w-20 rounded-full object-cover border-2 border-[var(--border-accent)] mb-6" />
               <h2 className="font-serif-display text-3xl md:text-4xl font-bold text-[var(--text-primary)]">
-                Olá, {user?.name?.split(" ")[0]}. Sou Aurélio.
+                Olá, {user?.name?.split(" ")[0]}. Sou {personaName}.
               </h2>
               <p className="mt-3 text-[var(--text-secondary)] leading-relaxed">
                 Estou aqui para te dizer a verdade — com respeito, mas sem rodeios. O que pesa em você hoje?
@@ -427,6 +467,7 @@ export default function Chat() {
                   onSaveQuote={saveQuote}
                   isPlaying={playingId === m.id}
                   isLoading={loadingId === m.id}
+                  personaName={personaName}
                 />
               ))}
             </div>
@@ -454,9 +495,9 @@ export default function Chat() {
                 data-testid="voice-call-button"
                 onClick={call.start}
                 disabled={sending}
-                title="Falar com Aurélio em tempo real"
+                title={`Falar com ${personaName} em tempo real`}
                 className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border-accent)] text-[var(--terracotta)] hover:bg-[var(--terracotta)] hover:text-[#0f0e0d] transition-colors shrink-0 disabled:opacity-40"
-                aria-label="Ligar para Aurélio"
+                aria-label={`Ligar para ${personaName}`}
               >
                 <Phone size={16} />
               </button>
@@ -470,7 +511,7 @@ export default function Chat() {
               </button>
             </div>
             <p className="text-center text-[11px] text-[var(--text-muted)] mt-2.5">
-              Aurélio pode se enganar. Em crise, ligue para o CVV — 188.
+              {personaName} pode se enganar. Em crise, ligue para o CVV — 188.
             </p>
           </div>
         </div>
@@ -485,9 +526,19 @@ export default function Chat() {
         isLoading={loadingId === "reflection"}
         onDiscuss={discussReflection}
         onSaveQuote={(text) => saveQuote(text, null)}
+        personaName={personaName}
       />
       <JournalDrawer open={journalOpen} onClose={() => setJournalOpen(false)} refreshKey={journalKey} />
       <VoiceCall call={call} />
+      <VoiceSettingsDialog
+        open={voiceSettingsOpen}
+        onOpenChange={setVoiceSettingsOpen}
+        selectedVoiceId={user?.settings?.voice_id}
+        onSave={saveVoiceSettings}
+        saveLabel={savingVoice ? "Salvando…" : "Salvar voz"}
+        title="Configurar voz do mentor"
+        description="Escolha uma voz humana e natural para o seu mentor. Você pode mudar quando quiser."
+      />
     </div>
   );
 }

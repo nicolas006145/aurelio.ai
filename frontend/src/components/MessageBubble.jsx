@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Volume2, Loader2, Square, Copy, Check, BookMarked } from "lucide-react";
 
 function VoiceWave() {
@@ -15,7 +15,7 @@ function VoiceWave() {
   );
 }
 
-export function MessageBubble({ message, onSpeak, onSaveQuote, isPlaying, isLoading }) {
+function MessageBubble({ message, onSpeak, onSaveQuote, isPlaying, isLoading, personaName = "Aurélio" }) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const isUser = message.role === "user";
@@ -49,7 +49,7 @@ export function MessageBubble({ message, onSpeak, onSaveQuote, isPlaying, isLoad
   return (
     <div className="flex flex-col gap-2 fadeup" data-testid="aurelio-message-card">
       <div className="flex items-center gap-2">
-        <span className="font-serif-display text-lg font-semibold text-[var(--terracotta)]">Aurélio</span>
+        <span className="font-serif-display text-lg font-semibold text-[var(--terracotta)]">{personaName}</span>
         <span className="h-px flex-1 bg-[var(--border)]" />
       </div>
       <div className={`leading-[1.75] whitespace-pre-wrap text-[15px] ${failed ? "text-[var(--text-muted)] italic" : "text-[var(--text-primary)]"}`}>
@@ -78,7 +78,7 @@ export function MessageBubble({ message, onSpeak, onSaveQuote, isPlaying, isLoad
             ) : (
               <Volume2 size={14} />
             )}
-            <span>{isPlaying ? "Ouvindo…" : "Ouvir a voz de Aurélio"}</span>
+            <span>{isPlaying ? "Ouvindo…" : `Ouvir a voz de ${personaName}`}</span>
           </button>
           <button
             data-testid="save-quote-button"
@@ -100,3 +100,8 @@ export function MessageBubble({ message, onSpeak, onSaveQuote, isPlaying, isLoad
     </div>
   );
 }
+
+const MemoizedMessageBubble = memo(MessageBubble);
+
+export { MemoizedMessageBubble as MessageBubble };
+export default MemoizedMessageBubble;
