@@ -94,7 +94,7 @@ export default function PricingPlans() {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
 
-  const PRICE_MAP = { free: 0, founder: 7.9, mentor: 19.9 };
+const PRICE_MAP = { free: 0, founder: 7.9, mentor: 19.9 };
 
   const PLANS = useMemo(() => {
     return ["free", "founder", "mentor"].map((id) => {
