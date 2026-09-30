@@ -33,7 +33,7 @@ export function VoiceSettingsDialog({
   const DEMO_SAMPLE = t("voiceSettings.demoSample");
   const defaultTitle = t("voiceSettings.title");
   const defaultDescription = t("voiceSettings.description");
-  const defaultSaveLabel = t("voiceSettings.save");
+  const defaultSaveLabel = t("voiceSettings.saveLabel");
 
   useEffect(() => {
     setSelected(selectedVoiceId);
@@ -183,7 +183,7 @@ export function VoiceSettingsDialog({
               type="button"
               className="rounded-full border border-[var(--border)] px-5 py-2.5 text-sm text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] transition-colors"
             >
-              {t("common.cancel")}
+              {t("voiceSettings.cancel")}
             </button>
           </DialogClose>
           {showSave && (
