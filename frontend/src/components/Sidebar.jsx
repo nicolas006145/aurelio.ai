@@ -257,7 +257,8 @@ export function Sidebar({
               data-testid="logout-button"
               onClick={onLogout}
               className="text-[var(--text-muted)] hover:text-[var(--terracotta)] transition-colors"
-              aria-label={t("auth.login")}
+              aria-label={t("common.logout")}
+              title={t("common.logout")}
             >
               <LogOut size={17} />
             </button>

@@ -24,6 +24,7 @@ const es = {
     active: "Activo",
     canceled: "Cancelado",
     pending: "Pago pendiente",
+    logout: "Cerrar sesión",
   },
   landing: {
     brand: "Aurelio",

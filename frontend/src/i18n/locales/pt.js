@@ -24,6 +24,7 @@ const pt = {
     active: "Ativo",
     canceled: "Cancelado",
     pending: "Pagamento pendente",
+    logout: "Sair",
   },
   landing: {
     brand: "Aurélio",

@@ -63,45 +63,46 @@ export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying,
               </p>
               <p className="mt-4 text-right text-sm text-[var(--text-muted)]">— {personaName}</p>
 
-              <div className="mt-7 flex flex-wrap gap-2.5">
+              <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
                 <button
                   data-testid="daily-reflection-listen"
                   onClick={() => onSpeak("reflection", reflection.text, { url: "/reflection/today/audio" })}
-                  className="flex items-center gap-2 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] px-5 py-2.5 text-sm font-semibold hover:opacity-90"
+                  className="flex items-center justify-center gap-2 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] px-4 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity w-full"
                 >
                   {isLoading ? (
-                    <Loader2 size={15} className="animate-spin" />
+                    <Loader2 size={15} className="animate-spin shrink-0" />
                   ) : isPlaying ? (
                     <>
-                      <Square size={13} />
+                      <Square size={13} className="shrink-0" />
                       <VoiceWave bars={3} className="text-[#0f0e0d]" />
                     </>
                   ) : (
-                    <Volume2 size={15} />
+                    <Volume2 size={15} className="shrink-0" />
                   )}
-                  {isPlaying ? "Parar" : "Ouvir"}
+                  <span>{isPlaying ? "Parar" : "Ouvir"}</span>
                 </button>
                 <button
                   data-testid="daily-reflection-discuss"
                   onClick={onDiscuss}
-                  className="flex items-center gap-2 rounded-full border border-[var(--border-accent)] text-[var(--terracotta)] px-5 py-2.5 text-sm font-medium hover:bg-[var(--terracotta)]/10"
+                  className="flex items-center justify-center gap-2 rounded-full border border-[var(--border-accent)] text-[var(--terracotta)] px-4 py-2.5 text-sm font-medium hover:bg-[var(--terracotta)]/10 transition-colors w-full"
                 >
-                  <MessageSquare size={15} /> Conversar sobre isso
+                  <MessageSquare size={15} className="shrink-0" />
+                  <span>Conversar sobre isso</span>
                 </button>
                 <button
                   data-testid="daily-reflection-save"
                   onClick={save}
-                  className="flex items-center gap-2 rounded-full border border-[var(--border)] text-[var(--text-secondary)] px-5 py-2.5 text-sm hover:text-[var(--text-primary)] hover:border-[var(--border-accent)]"
+                  className="flex items-center justify-center gap-2 rounded-full border border-[var(--border)] text-[var(--text-secondary)] px-4 py-2.5 text-sm hover:text-[var(--text-primary)] hover:border-[var(--border-accent)] transition-colors w-full"
                 >
-                  {saved ? <Check size={15} /> : <BookMarked size={15} />}
-                  {saved ? "Guardado" : "Guardar no diário"}
+                  {saved ? <Check size={15} className="shrink-0 text-emerald-400" /> : <BookMarked size={15} className="shrink-0" />}
+                  <span>{saved ? "Guardado" : "Guardar no diário"}</span>
                 </button>
                 <button
                   data-testid="daily-reflection-share"
                   onClick={() => setShowStoryModal(true)}
-                  className="flex items-center gap-2 rounded-full border border-[var(--border)] text-[var(--text-secondary)] px-4 py-2.5 text-sm hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors"
+                  className="flex items-center justify-center gap-2 rounded-full border border-[var(--border)] text-[var(--text-secondary)] px-4 py-2.5 text-sm hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors w-full"
                 >
-                  <Share2 size={15} />
+                  <Share2 size={15} className="shrink-0" />
                   <span>Card Stories</span>
                 </button>
               </div>

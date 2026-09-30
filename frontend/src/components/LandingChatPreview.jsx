@@ -15,7 +15,7 @@ export function LandingChatPreview({ onStart }) {
   const { speak, stop, playingId, loadingId } = useTTS();
   const [persona, setPersona] = useState("aurelio"); // 'aurelio' | 'lua'
   const [step, setStep] = useState(0); // 0: typing user, 1: user1, 2: typing assistant, 3: assistant1, 4: user2 typing, 5: user2, 6: assistant2 typing, 7: assistant2
-  const [isPlayingLocal, setIsPlayingLocal] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
   const scrollRef = useRef(null);
 
   const q1 = t("landing.chatPreview.userQuestion1");
@@ -60,6 +60,7 @@ export function LandingChatPreview({ onStart }) {
 
   // Stop audio if persona changes
   const switchPersona = (p) => {
+    setHasInteracted(true);
     stop();
     setPersona(p);
     setStep(0);
@@ -94,7 +95,12 @@ export function LandingChatPreview({ onStart }) {
         </p>
 
         {/* Persona toggle */}
-        <div className="inline-flex items-center gap-1.5 p-1 mt-6 rounded-full border border-[var(--border)] bg-[var(--bg-card)]">
+        <div className="relative inline-flex items-center gap-1.5 p-1 mt-7 rounded-full border border-[var(--border-accent)]/60 bg-[var(--bg-card)] shadow-lg">
+          {!hasInteracted && (
+            <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap bg-[var(--terracotta)] text-[#0f0e0d] px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-md flex items-center gap-1 animate-bounce">
+              <Sparkles size={10} /> Alternar mentor
+            </span>
+          )}
           <button
             type="button"
             onClick={() => switchPersona("aurelio")}
@@ -117,7 +123,7 @@ export function LandingChatPreview({ onStart }) {
             className={`flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
               persona === "lua"
                 ? "bg-[var(--terracotta)] text-[#0f0e0d] shadow-sm"
-                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                : `text-[var(--text-secondary)] hover:text-[var(--text-primary)] ${!hasInteracted ? "bg-[var(--terracotta)]/10 border border-[var(--terracotta)]/40 animate-pulse" : ""}`
             }`}
           >
             <img

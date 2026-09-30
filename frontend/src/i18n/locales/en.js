@@ -24,6 +24,7 @@ const en = {
     active: "Active",
     canceled: "Canceled",
     pending: "Payment pending",
+    logout: "Log out",
   },
   landing: {
     brand: "Aurelius",
