@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { Volume2, Loader2, Check, Sparkles } from "lucide-react";
+import { Volume2, Loader2, Check, Square } from "lucide-react";
+import { VoiceWave } from "@/components/VoiceWave";
 import {
   Dialog,
   DialogContent,
@@ -11,25 +12,28 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { useTTS } from "@/lib/useTTS";
-
-const DEMO_SAMPLE =
-  "Olá, sou seu mentor de amadurecimento. Vou te dizer a verdade com respeito, mas sem rodeios. Qual é a primeira coisa que você precisa encarar hoje?";
+import { useI18n, getCurrentLanguage } from "@/i18n/I18nContext";
 
 export function VoiceSettingsDialog({
   open,
   onOpenChange,
   selectedVoiceId,
   onSave,
-  saveLabel = "Salvar configuração",
-  title = "Escolha a voz do seu mentor",
-  description = "Ouça uma demonstração de cada voz e escolha a que mais combina com você.",
+  saveLabel,
+  title,
+  description,
   showSave = true,
 }) {
+  const { t } = useI18n();
   const { speak, stop, playingId, loadingId } = useTTS();
   const [voices, setVoices] = useState([]);
   const [selected, setSelected] = useState(selectedVoiceId);
   const [saving, setSaving] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const DEMO_SAMPLE = t("voiceSettings.demoSample");
+  const defaultTitle = t("voiceSettings.title");
+  const defaultDescription = t("voiceSettings.description");
+  const defaultSaveLabel = t("voiceSettings.save");
 
   useEffect(() => {
     setSelected(selectedVoiceId);
@@ -38,8 +42,9 @@ export function VoiceSettingsDialog({
   useEffect(() => {
     let mounted = true;
     if (!open) return;
+    const lang = getCurrentLanguage();
     api
-      .get("/voices")
+      .get(`/voices?lang=${lang}`)
       .then(({ data }) => {
         if (!mounted) return;
         setVoices(data.voices || []);
@@ -59,7 +64,7 @@ export function VoiceSettingsDialog({
     (voice) => {
       speak(`demo-${voice.id}`, DEMO_SAMPLE, { demo: true, voice_id: voice.id });
     },
-    [speak]
+    [speak, DEMO_SAMPLE]
   );
 
   const handleSave = async () => {
@@ -110,12 +115,12 @@ export function VoiceSettingsDialog({
               else playDemo(voice);
             }}
             className="grid place-items-center h-10 w-10 shrink-0 rounded-full border border-[var(--border-accent)] text-[var(--terracotta)] hover:bg-[var(--terracotta)] hover:text-[#0f0e0d] transition-colors"
-            aria-label={isPlaying ? "Parar demo" : "Ouvir demo"}
+            aria-label={isPlaying ? t("voiceSettings.stopDemo") : t("voiceSettings.hearDemo")}
           >
             {isLoading ? (
               <Loader2 size={16} className="animate-spin" />
             ) : isPlaying ? (
-              <Sparkles size={16} className="animate-pulse" />
+              <VoiceWave bars={3} className="text-[var(--terracotta)]" />
             ) : (
               <Volume2 size={16} />
             )}
@@ -129,9 +134,9 @@ export function VoiceSettingsDialog({
     <Dialog open={open} onOpenChange={(v) => { stop(); onOpenChange?.(v); }}>
       <DialogContent className="max-w-xl !bg-[var(--bg-main)] !border-[var(--border)] text-[var(--text-primary)]">
         <DialogHeader>
-          <DialogTitle className="font-serif-display text-2xl">{title}</DialogTitle>
+          <DialogTitle className="font-serif-display text-2xl">{title || defaultTitle}</DialogTitle>
           <DialogDescription className="text-[var(--text-secondary)]">
-            {description}
+            {description || defaultDescription}
           </DialogDescription>
         </DialogHeader>
 
@@ -145,7 +150,7 @@ export function VoiceSettingsDialog({
               {femaleVoices.length > 0 && (
                 <div className="space-y-2.5">
                   <div className="flex items-center gap-2 px-1">
-                    <span className="eyebrow">Vozes femininas</span>
+                    <span className="eyebrow">{t("voiceSettings.femaleVoices")}</span>
                     <span className="h-px flex-1 bg-[var(--border)]" />
                   </div>
                   <div className="grid gap-3">
@@ -158,7 +163,7 @@ export function VoiceSettingsDialog({
               {maleVoices.length > 0 && (
                 <div className="space-y-2.5">
                   <div className="flex items-center gap-2 px-1">
-                    <span className="eyebrow">Vozes masculinas</span>
+                    <span className="eyebrow">{t("voiceSettings.maleVoices")}</span>
                     <span className="h-px flex-1 bg-[var(--border)]" />
                   </div>
                   <div className="grid gap-3">
@@ -178,7 +183,7 @@ export function VoiceSettingsDialog({
               type="button"
               className="rounded-full border border-[var(--border)] px-5 py-2.5 text-sm text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] transition-colors"
             >
-              Cancelar
+              {t("common.cancel")}
             </button>
           </DialogClose>
           {showSave && (
@@ -189,7 +194,7 @@ export function VoiceSettingsDialog({
               className="flex items-center justify-center gap-2 rounded-full bg-[var(--terracotta)] px-6 py-2.5 text-sm font-semibold text-[#0f0e0d] hover:opacity-90 transition-opacity disabled:opacity-50"
             >
               {saving && <Loader2 size={15} className="animate-spin" />}
-              {saveLabel}
+              {saveLabel || defaultSaveLabel}
             </button>
           )}
         </DialogFooter>

@@ -1,79 +1,22 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Check, Sparkles, Star, ArrowLeft, Crown } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import CheckoutModal from "@/components/CheckoutModal";
 import { useAuth } from "@/context/AuthContext";
 import { formatCurrencyBRL } from "@/lib/utils";
+import { useI18n } from "@/i18n/I18nContext";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=400&q=80";
 
-const PLANS = [
-  {
-    id: "free",
-    name: "Gratuito",
-    priceMonth: 0,
-    highlight: false,
-    icon: null,
-    eyebrow: "Para começar",
-    description: "Tudo o que você precisa para provar a verdade e começar a amadurecer.",
-    features: [
-      "10 mensagens por dia",
-      "Conversas salvas",
-      "Diário de reflexões básico",
-      "Reflexão diária",
-      "Login com Google",
-      "Acesso ao chat principal",
-    ],
-    cta: "Seu plano atual",
-    ctaDisabled: true,
-  },
-  {
-    id: "founder",
-    name: "Aurélio Fundador",
-    priceMonth: 7.9,
-    highlight: true,
-    icon: Sparkles,
-    eyebrow: "Para os primeiros",
-    description: "Preço de fundador para quem entra agora. Tudo que você precisa para um ano de crescimento real.",
-    badge: "Preço especial",
-    features: [
-      "80 mensagens por dia",
-      "Histórico completo de conversas",
-      "Diário de reflexões ilimitado",
-      "Reflexões diárias personalizadas",
-      "Organização por temas",
-      "Voz do Aurélio com limite mensal",
-      "Acesso antecipado a melhorias",
-      "Preço especial para os primeiros usuários",
-    ],
-    cta: "Assinar por R$ 7,90",
-    ctaPrimary: true,
-  },
-  {
-    id: "mentor",
-    name: "Aurélio Mentor",
-    priceMonth: 19.9,
-    highlight: false,
-    icon: Crown,
-    eyebrow: "Para mergulhar fundo",
-    description: "A experiência completa. Mais memória, mais voz, respostas mais profundas e prioridade em tudo.",
-    features: [
-      "250 mensagens por dia",
-      "Tudo do plano Fundador",
-      "Voz do Aurélio com limite maior",
-      "Memória mais completa das conversas",
-      "Respostas mais detalhadas e direcionadas",
-      "Revisão de metas e hábitos",
-      "Prioridade nas respostas",
-      "Novos recursos primeiro",
-    ],
-    cta: "Assinar por R$ 19,90",
-  },
-];
+const PLAN_ICONS = {
+  founder: Sparkles,
+  mentor: Crown,
+  free: null,
+};
 
-function PlanCard({ plan, onSelect }) {
+function PlanCard({ plan, onSelect, t }) {
   const Icon = plan.icon;
   return (
     <div
@@ -111,7 +54,7 @@ function PlanCard({ plan, onSelect }) {
             {formatCurrencyBRL(plan.priceMonth)}
           </span>
           {plan.priceMonth > 0 && (
-            <span className="text-sm text-[var(--text-muted)]">/mês</span>
+            <span className="text-sm text-[var(--text-muted)]">{t("plans.planCard.perMonth")}</span>
           )}
         </div>
       </div>
@@ -146,15 +89,43 @@ function PlanCard({ plan, onSelect }) {
 
 export default function PricingPlans() {
   const navigate = useNavigate();
+  const { t, translateArray } = useI18n();
   const { user } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+
+  const PRICE_MAP = { free: 0, founder: 7.9, mentor: 19.9 };
+
+  const PLANS = useMemo(() => {
+    return ["free", "founder", "mentor"].map((id) => {
+      const meta = t(`plans.plans.${id}`);
+      const features = translateArray(`plans.plans.${id}.features`);
+      const priceMonth = PRICE_MAP[id];
+      const isCurrentFree = user && (!user.subscription?.plan_id || user.subscription?.plan_id === "free" || user.plan?.id === "free");
+      return {
+        id,
+        name: meta.name,
+        priceMonth,
+        highlight: id === "founder",
+        icon: PLAN_ICONS[id],
+        eyebrow: meta.eyebrow,
+        description: meta.description,
+        badge: id === "founder" ? t("plans.planCard.specialBadge") : null,
+        features,
+        cta: id === "free"
+          ? t("plans.planCard.yourPlan")
+          : `${t("plans.planCard.signFor")} ${formatCurrencyBRL(priceMonth)}`,
+        ctaDisabled: id === "free" && isCurrentFree,
+        ctaPrimary: id === "founder",
+      };
+    });
+  }, [t, translateArray, user]);
 
   const handleSelect = (plan) => {
     if (plan.ctaDisabled) return;
     if (plan.id === "free") return;
     if (!user) {
-      toast.info("Faça login para assinar um plano.");
+      toast.info(t("plans.loginToSubscribe"));
       navigate("/auth");
       return;
     }
@@ -170,29 +141,29 @@ export default function PricingPlans() {
             onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-sm text-[var(--text-secondary)] hover:text-[var(--terracotta)] transition-colors"
           >
-            <ArrowLeft size={16} /> Voltar
+            <ArrowLeft size={16} /> {t("app.goBack")}
           </button>
           <button
             onClick={() => navigate("/")}
             className="font-serif-display text-2xl font-semibold text-[var(--text-primary)] hover:text-[var(--terracotta)] transition-colors"
           >
-            Aurélio.
+            {t("app.loading")}
           </button>
         </div>
 
         <div className="max-w-[720px] mx-auto text-center mb-12 md:mb-16">
-          <span className="eyebrow text-[var(--terracotta)] mb-5 inline-block">Planos de assinatura</span>
+          <span className="eyebrow text-[var(--terracotta)] mb-5 inline-block">{t("plans.pageTitle")}</span>
           <h1 className="font-serif-display text-4xl md:text-[56px] leading-[1.05] text-[var(--text-primary)] mb-6">
-            Crescer de verdade <em className="text-[var(--terracotta)] not-italic font-serif-display">tem preço</em>, mas não é caro.
+            {t("plans.heading1")} <em className="text-[var(--terracotta)] not-italic font-serif-display">{t("plans.heading2")}</em>{t("plans.heading3")}
           </h1>
           <p className="text-lg text-[var(--text-secondary)] leading-relaxed">
-            Escolha o plano que combina com a sua intensidade. Todos dão acesso ao que importa — a verdade que você precisa ouvir.
+            {t("plans.subtitle")}
           </p>
         </div>
 
         <div className="grid md:grid-cols-3 gap-5 md:gap-6 items-stretch">
           {PLANS.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} onSelect={handleSelect} />
+            <PlanCard key={plan.id} plan={plan} onSelect={handleSelect} t={t} />
           ))}
         </div>
 
@@ -206,15 +177,15 @@ export default function PricingPlans() {
               />
             </div>
             <div className="flex-1">
-              <div className="eyebrow text-[var(--text-muted)] mb-2">Uma nota rápida</div>
+              <div className="eyebrow text-[var(--text-muted)] mb-2">{t("plans.quickNote")}</div>
               <h3 className="font-serif-display text-2xl text-[var(--text-primary)] mb-3">
-                O melhor plano é o que você usa.
+                {t("plans.bestPlan")}
               </h3>
               <p className="text-[var(--text-secondary)] leading-relaxed mb-3">
-                Começar pelo gratuito já é um passo maior do que a maioria das pessoas dá. Quando você perceber que o Aurélio virou parte do seu dia — aí faz sentido subir.
+                {t("plans.bestPlanDesc1")}
               </p>
               <p className="text-[var(--text-secondary)] leading-relaxed">
-                E o preço de fundador? É para quem está aqui desde o começo e quer garantir o mesmo valor, para sempre.
+                {t("plans.bestPlanDesc2")}
               </p>
             </div>
           </div>
@@ -222,7 +193,7 @@ export default function PricingPlans() {
 
         <footer className="mt-14 md:mt-20 text-center pb-4">
           <p className="text-xs text-[var(--text-muted)]">
-            &copy; {new Date().getFullYear()} Aurélio. Valorizando a verdade, sem bajulação.
+            {t("plans.footerNote", { year: new Date().getFullYear() })}
           </p>
         </footer>
       </div>

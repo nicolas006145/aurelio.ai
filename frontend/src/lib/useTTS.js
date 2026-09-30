@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { API } from "@/lib/api";
+import { getCurrentLanguage } from "@/i18n/I18nContext";
 
 let currentAudio = null;
 
@@ -21,14 +22,6 @@ export function useTTS() {
   const [loadingId, setLoadingId] = useState(null);
   const cache = useRef({});
 
-  useEffect(() => {
-    return () => {
-      try { stopAllAudio(); } catch {}
-      revokeAll(Object.values(cache.current));
-      cache.current = {};
-    };
-  }, []);
-
   const stop = useCallback(() => {
     stopAllAudio();
     setPlayingId(null);
@@ -38,6 +31,20 @@ export function useTTS() {
     revokeAll(Object.values(cache.current));
     cache.current = {};
   }, []);
+
+  useEffect(() => {
+    const onLangChange = () => {
+      try { stopAllAudio(); } catch {}
+      clearCache();
+    };
+    window.addEventListener("aurelio:lang-changed", onLangChange);
+    return () => {
+      window.removeEventListener("aurelio:lang-changed", onLangChange);
+      try { stopAllAudio(); } catch {}
+      revokeAll(Object.values(cache.current));
+      cache.current = {};
+    };
+  }, [clearCache]);
 
   const speak = useCallback(
     async (id, text, opts = {}) => {
@@ -51,14 +58,23 @@ export function useTTS() {
         let url = cache.current[id];
         if (!url) {
           const token = localStorage.getItem("aurelio_token");
+          const lang = getCurrentLanguage();
           let res;
           if (opts.demo) {
-            const qs = opts.voice_id ? `?voice_id=${encodeURIComponent(opts.voice_id)}` : "";
+            const qsParts = [];
+            if (opts.voice_id) qsParts.push(`voice_id=${encodeURIComponent(opts.voice_id)}`);
+            if (lang) qsParts.push(`lang=${encodeURIComponent(lang)}`);
+            if (text) qsParts.push(`text=${encodeURIComponent(text)}`);
+            const qs = qsParts.length ? `?${qsParts.join("&")}` : "";
             res = await fetch(`${API}/tts/demo${qs}`);
           } else if (opts.url) {
-            res = await fetch(`${API}${opts.url}`, { headers: { Authorization: `Bearer ${token}` } });
+            const sep = opts.url.includes("?") ? "&" : "?";
+            res = await fetch(
+              `${API}${opts.url}${sep}lang=${encodeURIComponent(lang)}`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            );
           } else {
-            const body = { text };
+            const body = { text, lang };
             if (opts.voice_id) body.voice_id = opts.voice_id;
             res = await fetch(`${API}/tts`, {
               method: "POST",

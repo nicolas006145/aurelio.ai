@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { paymentsApi, formatApiErrorDetail } from "@/lib/api";
 import { formatCurrencyBRL } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { useI18n, getCurrentLanguage } from "@/i18n/I18nContext";
 
 function applyCpfMask(value) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -48,6 +49,7 @@ function applyCvvMask(value) {
 
 export default function CheckoutModal({ open, onOpenChange, plan, user }) {
   const { refreshSubscription } = useAuth();
+  const { t } = useI18n();
   const [step, setStep] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState("pix");
   const [processing, setProcessing] = useState(false);
@@ -114,7 +116,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
   const validateCpfOnBlur = async () => {
     const clean = cpf.replace(/\D/g, "");
     if (clean.length !== 11) {
-      setCpfError("CPF inválido.");
+      setCpfError(t("checkout.cpfInvalid"));
       setCpfValidated(false);
       return;
     }
@@ -123,7 +125,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
       await paymentsApi.validateCpf(clean);
       setCpfValidated(true);
     } catch (err) {
-      const msg = formatApiErrorDetail(err?.response?.data?.detail) || "CPF inválido.";
+      const msg = formatApiErrorDetail(err?.response?.data?.detail) || t("checkout.cpfInvalid");
       setCpfError(msg);
       setCpfValidated(false);
     }
@@ -132,7 +134,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
   const lookupCepOnBlur = async () => {
     const clean = cep.replace(/\D/g, "");
     if (clean.length !== 8) {
-      setCepError("CEP inválido.");
+      setCepError(t("checkout.cepInvalid"));
       setCepValidated(false);
       return;
     }
@@ -145,7 +147,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
       setUf(data.uf || data.state || "");
       setCepValidated(true);
     } catch (err) {
-      const msg = formatApiErrorDetail(err?.response?.data?.detail) || "CEP inválido.";
+      const msg = formatApiErrorDetail(err?.response?.data?.detail) || t("checkout.cepInvalid");
       setCepError(msg);
       setCepValidated(false);
     }
@@ -218,7 +220,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
       setPixCopyPaste(data.copy_paste || "");
       setPaymentId(data.payment_id || null);
     } catch (err) {
-      const msg = formatApiErrorDetail(err?.response?.data?.detail) || "Não foi possível iniciar o pagamento.";
+      const msg = formatApiErrorDetail(err?.response?.data?.detail) || t("checkout.initPaymentError");
       toast.error(msg);
     } finally {
       setProcessing(false);
@@ -229,11 +231,11 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
     try {
       setConfirming(true);
       await paymentsApi.confirm(paymentId || undefined);
-      toast.success("Pagamento confirmado! Sua assinatura foi ativada.");
+      toast.success(t("checkout.paymentConfirmed"));
       await refreshSubscription();
       onOpenChange(false);
     } catch (err) {
-      const msg = formatApiErrorDetail(err?.response?.data?.detail) || "Ainda não foi possível confirmar o pagamento. Tente novamente em alguns minutos.";
+      const msg = formatApiErrorDetail(err?.response?.data?.detail) || t("checkout.confirmPending");
       toast.error(msg);
     } finally {
       setConfirming(false);
@@ -275,11 +277,11 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
         } catch {
         }
       }
-      toast.success("Pagamento aprovado! Sua assinatura foi ativada.");
+      toast.success(t("checkout.paymentApproved"));
       await refreshSubscription();
       onOpenChange(false);
     } catch (err) {
-      const msg = formatApiErrorDetail(err?.response?.data?.detail) || "Não foi possível processar o pagamento. Verifique os dados e tente novamente.";
+      const msg = formatApiErrorDetail(err?.response?.data?.detail) || t("checkout.processPaymentError");
       toast.error(msg);
     } finally {
       setProcessing(false);
@@ -290,9 +292,9 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
     if (!pixCopyPaste) return;
     try {
       await navigator.clipboard.writeText(pixCopyPaste);
-      toast.success("Código Pix copiado.");
+      toast.success(t("checkout.pixCopied"));
     } catch {
-      toast.error("Não foi possível copiar.");
+      toast.error(t("checkout.pixCopyError"));
     }
   };
 
@@ -327,10 +329,10 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
         <div className="p-6 md:p-8">
           <DialogHeader className="mb-5 text-left">
             <DialogTitle className="font-serif-display text-2xl md:text-3xl text-[var(--text-primary)]">
-              Assinar {plan?.name}
+              {t("checkout.subscribe", { plan: plan?.name || "" })}
             </DialogTitle>
             <DialogDescription className="text-[var(--text-secondary)]">
-              Complete os passos abaixo para ativar sua assinatura.
+              {t("checkout.stepsHint")}
             </DialogDescription>
           </DialogHeader>
 
@@ -349,7 +351,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     <div className="font-serif-display text-3xl text-[var(--text-primary)]">
                       {formatCurrencyBRL(plan?.priceMonth)}
                     </div>
-                    <div className="text-xs text-[var(--text-muted)]">/mês</div>
+                    <div className="text-xs text-[var(--text-muted)]">{t("checkout.perMonth")}</div>
                   </div>
                 </div>
                 <div className="border-t border-[var(--border)] pt-4 mt-2 grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
@@ -366,13 +368,13 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                   onClick={() => onOpenChange(false)}
                   className="flex-1 rounded-full border border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--border)]/20 text-sm h-11"
                 >
-                  Cancelar
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   onClick={handleNextStep2}
                   className="flex-1 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] hover:bg-[var(--terracotta-hover)] text-sm h-11 font-semibold shadow-lg shadow-[var(--terracotta)]/20"
                 >
-                  Continuar
+                  {t("common.continue")}
                 </Button>
               </div>
             </div>
@@ -380,7 +382,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
 
           {step === 2 && (
             <div className="space-y-5 fadeup">
-              <Label className="text-sm font-semibold text-[var(--text-primary)]">Escolha a forma de pagamento</Label>
+              <Label className="text-sm font-semibold text-[var(--text-primary)]">{t("checkout.choosePaymentMethod")}</Label>
               <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="grid grid-cols-2 gap-3">
                 <Label
                   htmlFor="pix"
@@ -397,7 +399,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                         <QrCode size={18} className="text-[var(--terracotta)]" />
                         <span className="font-semibold text-[var(--text-primary)]">Pix</span>
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)]">Pagamento instantâneo. Aprovado em segundos.</p>
+                      <p className="text-xs text-[var(--text-secondary)]">{t("checkout.pixDescription")}</p>
                     </div>
                   </div>
                 </Label>
@@ -414,9 +416,9 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
                         <CreditCard size={18} className="text-[var(--terracotta)]" />
-                        <span className="font-semibold text-[var(--text-primary)]">Cartão</span>
+                        <span className="font-semibold text-[var(--text-primary)]">{t("checkout.cardLabel")}</span>
                       </div>
-                      <p className="text-xs text-[var(--text-secondary)]">Crédito recorrente mensal. Cancele quando quiser.</p>
+                      <p className="text-xs text-[var(--text-secondary)]">{t("checkout.cardDescription")}</p>
                     </div>
                   </div>
                 </Label>
@@ -426,13 +428,13 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                   onClick={handleBack}
                   className="flex-1 rounded-full border border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--border)]/20 text-sm h-11"
                 >
-                  <ChevronLeft size={16} /> Voltar
+                  <ChevronLeft size={16} /> {t("common.back")}
                 </Button>
                 <Button
                   onClick={handleNextStep3}
                   className="flex-1 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] hover:bg-[var(--terracotta-hover)] text-sm h-11 font-semibold shadow-lg shadow-[var(--terracotta)]/20"
                 >
-                  Continuar
+                  {t("common.continue")}
                 </Button>
               </div>
             </div>
@@ -440,15 +442,15 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
 
           {step === 3 && (
             <div className="space-y-5 fadeup">
-              <Label className="text-sm font-semibold text-[var(--text-primary)]">Dados do pagador e endereço</Label>
+              <Label className="text-sm font-semibold text-[var(--text-primary)]">{t("checkout.payerAndAddress")}</Label>
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="payerName" className="text-xs text-[var(--text-muted)]">Nome completo</Label>
+                  <Label htmlFor="payerName" className="text-xs text-[var(--text-muted)]">{t("checkout.fullName")}</Label>
                   <Input
                     id="payerName"
                     value={payerName}
                     onChange={(e) => setPayerName(e.target.value)}
-                    placeholder="Como no seu documento"
+                    placeholder={t("checkout.fullNamePlaceholder")}
                     className="rounded-2xl h-11 bg-[var(--bg-main)] border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--terracotta)]"
                   />
                 </div>
@@ -472,7 +474,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     {cpfError && <p className="text-xs text-red-400">{cpfError}</p>}
                     {cpfValidated && !cpfError && (
                       <p className="text-xs text-[var(--terracotta)] flex items-center gap-1">
-                        <Check size={12} /> CPF válido
+                        <Check size={12} /> {t("checkout.cpfValid")}
                       </p>
                     )}
                   </div>
@@ -508,24 +510,24 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     {cepError && <p className="text-xs text-red-400">{cepError}</p>}
                     {cepValidated && !cepError && (
                       <p className="text-xs text-[var(--terracotta)] flex items-center gap-1">
-                        <Check size={12} /> CEP encontrado
+                        <Check size={12} /> {t("checkout.cepFound")}
                       </p>
                     )}
                   </div>
                   <div className="md:col-span-2 space-y-1.5">
-                    <Label htmlFor="street" className="text-xs text-[var(--text-muted)]">Rua</Label>
+                    <Label htmlFor="street" className="text-xs text-[var(--text-muted)]">{t("checkout.street")}</Label>
                     <Input
                       id="street"
                       value={street}
                       onChange={(e) => setStreet(e.target.value)}
-                      placeholder="Rua, avenida, etc."
+                      placeholder={t("checkout.streetPlaceholder")}
                       className="rounded-2xl h-11 bg-[var(--bg-main)] border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--terracotta)]"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="number" className="text-xs text-[var(--text-muted)]">Número</Label>
+                    <Label htmlFor="number" className="text-xs text-[var(--text-muted)]">{t("checkout.number")}</Label>
                     <Input
                       id="number"
                       value={number}
@@ -535,33 +537,33 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="complement" className="text-xs text-[var(--text-muted)]">Complemento</Label>
+                    <Label htmlFor="complement" className="text-xs text-[var(--text-muted)]">{t("checkout.complement")}</Label>
                     <Input
                       id="complement"
                       value={complement}
                       onChange={(e) => setComplement(e.target.value)}
-                      placeholder="Apto, bloco…"
+                      placeholder={t("checkout.complementPlaceholder")}
                       className="rounded-2xl h-11 bg-[var(--bg-main)] border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--terracotta)]"
                     />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="neighborhood" className="text-xs text-[var(--text-muted)]">Bairro</Label>
+                    <Label htmlFor="neighborhood" className="text-xs text-[var(--text-muted)]">{t("checkout.neighborhood")}</Label>
                     <Input
                       id="neighborhood"
                       value={neighborhood}
                       onChange={(e) => setNeighborhood(e.target.value)}
-                      placeholder="Bairro"
+                      placeholder={t("checkout.neighborhood")}
                       className="rounded-2xl h-11 bg-[var(--bg-main)] border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--terracotta)]"
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="city" className="text-xs text-[var(--text-muted)]">Cidade</Label>
+                      <Label htmlFor="city" className="text-xs text-[var(--text-muted)]">{t("checkout.city")}</Label>
                       <Input
                         id="city"
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
-                        placeholder="Cidade"
+                        placeholder={t("checkout.city")}
                         className="rounded-2xl h-11 bg-[var(--bg-main)] border-[var(--border)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--terracotta)]"
                       />
                     </div>
@@ -583,14 +585,14 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                   onClick={handleBack}
                   className="flex-1 rounded-full border border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--border)]/20 text-sm h-11"
                 >
-                  <ChevronLeft size={16} /> Voltar
+                  <ChevronLeft size={16} /> {t("common.back")}
                 </Button>
                 <Button
                   onClick={handleNextStep4}
                   disabled={!canAdvanceFromStep3() || processing}
                   className="flex-1 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] hover:bg-[var(--terracotta-hover)] text-sm h-11 font-semibold shadow-lg shadow-[var(--terracotta)]/20 disabled:opacity-50"
                 >
-                  {processing ? <Loader2 size={16} className="animate-spin" /> : paymentMethod === "pix" ? "Gerar Pix" : "Continuar"}
+                  {processing ? <Loader2 size={16} className="animate-spin" /> : paymentMethod === "pix" ? t("checkout.generatePix") : t("common.continue")}
                 </Button>
               </div>
             </div>
@@ -599,17 +601,17 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
           {step === 4 && paymentMethod === "pix" && (
             <div className="space-y-5 fadeup">
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-main)] p-6 text-center">
-                <div className="eyebrow text-[var(--terracotta)] mb-3">Pagamento Pix</div>
+                <div className="eyebrow text-[var(--terracotta)] mb-3">{t("checkout.pixPayment")}</div>
                 <div className="font-serif-display text-xl text-[var(--text-primary)] mb-2">
                   {formatCurrencyBRL(plan?.priceMonth)}
                 </div>
                 <p className="text-xs text-[var(--text-muted)] mb-5">
-                  Abra o app do seu banco e escaneie o QR Code abaixo ou copie o código Pix.
+                  {t("checkout.pixInstructions")}
                 </p>
                 {processing ? (
                   <div className="py-10 grid place-items-center">
                     <Loader2 size={32} className="animate-spin text-[var(--terracotta)]" />
-                    <p className="text-sm text-[var(--text-muted)] mt-3">Gerando QR Code…</p>
+                    <p className="text-sm text-[var(--text-muted)] mt-3">{t("checkout.generatingQr")}</p>
                   </div>
                 ) : pixQrCode ? (
                   <div className="space-y-5">
@@ -621,7 +623,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                       />
                     </div>
                     <div className="space-y-2 text-left">
-                      <Label className="text-xs text-[var(--text-muted)]">Código Pix copia e cola</Label>
+                      <Label className="text-xs text-[var(--text-muted)]">{t("checkout.pixCopyLabel")}</Label>
                       <Textarea
                         readOnly
                         value={pixCopyPaste}
@@ -632,18 +634,18 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                         onClick={handleCopyPix}
                         className="w-full rounded-full border border-[var(--border)] bg-transparent text-[var(--terracotta)] hover:bg-[var(--terracotta)] hover:text-[#0f0e0d] text-sm h-10"
                       >
-                        <Copy size={14} /> Copiar código Pix
+                        <Copy size={14} /> {t("checkout.copyPixCode")}
                       </Button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-red-400">Não foi possível gerar o QR Code. Tente novamente.</p>
+                  <p className="text-sm text-red-400">{t("checkout.qrError")}</p>
                 )}
               </div>
               <div className="rounded-2xl border border-[var(--terracotta)]/30 bg-[var(--terracotta)]/5 p-4 flex gap-3">
                 <Shield size={18} className="text-[var(--terracotta)] shrink-0 mt-0.5" />
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  <strong className="text-[var(--text-primary)]">Aviso:</strong> a confirmação do Pix pode levar alguns minutos. Se já pagou, clique abaixo — pode ser que demore para aparecer.
+                  <strong className="text-[var(--text-primary)]">{t("checkout.notice")}:</strong> {t("checkout.pixDelayNotice")}
                 </p>
               </div>
               <div className="flex gap-3 pt-2">
@@ -651,14 +653,14 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                   onClick={handleBack}
                   className="flex-1 rounded-full border border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--border)]/20 text-sm h-11"
                 >
-                  <ChevronLeft size={16} /> Voltar
+                  <ChevronLeft size={16} /> {t("common.back")}
                 </Button>
                 <Button
                   onClick={handlePixConfirm}
                   disabled={!pixQrCode || confirming}
                   className="flex-1 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] hover:bg-[var(--terracotta-hover)] text-sm h-11 font-semibold shadow-lg shadow-[var(--terracotta)]/20 disabled:opacity-50"
                 >
-                  {confirming ? <Loader2 size={16} className="animate-spin" /> : "Já paguei"}
+                  {confirming ? <Loader2 size={16} className="animate-spin" /> : t("checkout.iPaid")}
                 </Button>
               </div>
             </div>
@@ -669,11 +671,11 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-main)] p-6">
                 <div className="flex items-center gap-2 mb-5">
                   <CreditCard size={18} className="text-[var(--terracotta)]" />
-                  <span className="font-semibold text-[var(--text-primary)]">Dados do cartão</span>
+                  <span className="font-semibold text-[var(--text-primary)]">{t("checkout.cardData")}</span>
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="cardNumber" className="text-xs text-[var(--text-muted)]">Número do cartão</Label>
+                    <Label htmlFor="cardNumber" className="text-xs text-[var(--text-muted)]">{t("checkout.cardNumber")}</Label>
                     <Input
                       id="cardNumber"
                       value={cardNumber}
@@ -684,7 +686,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
-                      <Label htmlFor="cardExpiry" className="text-xs text-[var(--text-muted)]">Validade</Label>
+                      <Label htmlFor="cardExpiry" className="text-xs text-[var(--text-muted)]">{t("checkout.cardExpiry")}</Label>
                       <Input
                         id="cardExpiry"
                         value={cardExpiry}
@@ -705,7 +707,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="cardHolder" className="text-xs text-[var(--text-muted)]">Nome impresso no cartão</Label>
+                    <Label htmlFor="cardHolder" className="text-xs text-[var(--text-muted)]">{t("checkout.cardHolder")}</Label>
                     <Input
                       id="cardHolder"
                       value={cardHolder}
@@ -719,15 +721,15 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
               <div className="rounded-2xl border border-[var(--terracotta)]/30 bg-[var(--terracotta)]/5 p-4 flex gap-3">
                 <Shield size={18} className="text-[var(--terracotta)] shrink-0 mt-0.5" />
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  <strong className="text-[var(--text-primary)]">Ambiente de demonstração:</strong> os dados do cartão são usados apenas para simulação local e não são enviados completos ao backend. Use qualquer número para testar.
+                  <strong className="text-[var(--text-primary)]">{t("checkout.demoEnv")}:</strong> {t("checkout.demoEnvNotice")}
                 </p>
               </div>
               <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-main)] p-5 flex items-center justify-between">
                 <div>
-                  <div className="text-xs text-[var(--text-muted)]">Total</div>
+                  <div className="text-xs text-[var(--text-muted)]">{t("checkout.total")}</div>
                   <div className="font-serif-display text-2xl text-[var(--text-primary)]">
                     {formatCurrencyBRL(plan?.priceMonth)}
-                    <span className="text-sm text-[var(--text-muted)] font-sans"> /mês</span>
+                    <span className="text-sm text-[var(--text-muted)] font-sans"> {t("checkout.perMonth")}</span>
                   </div>
                 </div>
               </div>
@@ -736,14 +738,14 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                   onClick={handleBack}
                   className="flex-1 rounded-full border border-[var(--border)] bg-transparent text-[var(--text-secondary)] hover:bg-[var(--border)]/20 text-sm h-11"
                 >
-                  <ChevronLeft size={16} /> Voltar
+                  <ChevronLeft size={16} /> {t("common.back")}
                 </Button>
                 <Button
                   onClick={handleCardPay}
                   disabled={!canAdvanceFromStep4() || processing}
                   className="flex-1 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] hover:bg-[var(--terracotta-hover)] text-sm h-11 font-semibold shadow-lg shadow-[var(--terracotta)]/20 disabled:opacity-50"
                 >
-                  {processing ? <Loader2 size={16} className="animate-spin" /> : `Pagar ${formatCurrencyBRL(plan?.priceMonth)}`}
+                  {processing ? <Loader2 size={16} className="animate-spin" /> : t("checkout.payAmount", { amount: formatCurrencyBRL(plan?.priceMonth) })}
                 </Button>
               </div>
             </div>

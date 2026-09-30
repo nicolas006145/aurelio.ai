@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { Quote, PenLine, Trash2, X, Loader2 } from "lucide-react";
+import { Quote, PenLine, Trash2, X, Loader2, Share2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
+import { StoryCardModal } from "@/components/StoryCardModal";
 
 export function JournalDrawer({ open, onClose, refreshKey }) {
   const [entries, setEntries] = useState([]);
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("all");
+  const [sharingEntry, setSharingEntry] = useState(null);
 
   useEffect(() => {
     if (!open) return;
@@ -132,18 +134,36 @@ export function JournalDrawer({ open, onClose, refreshKey }) {
                   >
                     {e.content}
                   </p>
-                  <button
-                    data-testid="journal-entry-delete"
-                    onClick={() => remove(e.id)}
-                    className="absolute right-3 bottom-3 opacity-0 group-hover:opacity-100 text-[var(--text-muted)] hover:text-red-400 transition-opacity"
-                    aria-label="Apagar"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="mt-2.5 pt-2 border-t border-[var(--border)]/40 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setSharingEntry(e)}
+                      className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--terracotta)] transition-colors"
+                      title="Gerar card para Stories"
+                    >
+                      <Share2 size={12} />
+                      <span>Compartilhar Stories</span>
+                    </button>
+                    <button
+                      data-testid="journal-entry-delete"
+                      onClick={() => remove(e.id)}
+                      className="text-[var(--text-muted)] hover:text-red-400 transition-colors p-1"
+                      aria-label="Apagar"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </motion.aside>
+          <StoryCardModal
+            open={Boolean(sharingEntry)}
+            onClose={() => setSharingEntry(null)}
+            text={sharingEntry?.content}
+            author={sharingEntry?.type === "quote" ? "Aurélio" : "Minha reflexão"}
+            date={sharingEntry?.created_at}
+          />
         </>
       )}
     </AnimatePresence>

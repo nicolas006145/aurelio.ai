@@ -1,19 +1,6 @@
 import { useState, memo } from "react";
 import { Volume2, Loader2, Square, Copy, Check, BookMarked } from "lucide-react";
-
-function VoiceWave() {
-  return (
-    <span className="flex items-end gap-[2px] h-3">
-      {[0, 1, 2, 3].map((i) => (
-        <span
-          key={i}
-          className="voicebar w-[2px] h-full bg-[var(--terracotta)] rounded-full"
-          style={{ animationDelay: `${i * 0.15}s` }}
-        />
-      ))}
-    </span>
-  );
-}
+import { VoiceWave } from "@/components/VoiceWave";
 
 function MessageBubble({ message, onSpeak, onSaveQuote, isPlaying, isLoading, personaName = "Aurélio" }) {
   const [copied, setCopied] = useState(false);

@@ -1,9 +1,12 @@
-import { Sun, Volume2, Square, Loader2, MessageSquare, BookMarked, X, Check } from "lucide-react";
+import { Sun, Volume2, Square, Loader2, MessageSquare, BookMarked, X, Check, Share2 } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { VoiceWave } from "@/components/VoiceWave";
+import { StoryCardModal } from "@/components/StoryCardModal";
 
 export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying, isLoading, onDiscuss, onSaveQuote, personaName = "Aurélio" }) {
   const [saved, setSaved] = useState(false);
+  const [showStoryModal, setShowStoryModal] = useState(false);
   if (!reflection) return null;
 
   const save = async () => {
@@ -66,7 +69,16 @@ export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying,
                   onClick={() => onSpeak("reflection", reflection.text, { url: "/reflection/today/audio" })}
                   className="flex items-center gap-2 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] px-5 py-2.5 text-sm font-semibold hover:opacity-90"
                 >
-                  {isLoading ? <Loader2 size={15} className="animate-spin" /> : isPlaying ? <Square size={14} /> : <Volume2 size={15} />}
+                  {isLoading ? (
+                    <Loader2 size={15} className="animate-spin" />
+                  ) : isPlaying ? (
+                    <>
+                      <Square size={13} />
+                      <VoiceWave bars={3} className="text-[#0f0e0d]" />
+                    </>
+                  ) : (
+                    <Volume2 size={15} />
+                  )}
                   {isPlaying ? "Parar" : "Ouvir"}
                 </button>
                 <button
@@ -84,11 +96,26 @@ export function DailyReflection({ reflection, open, onClose, onSpeak, isPlaying,
                   {saved ? <Check size={15} /> : <BookMarked size={15} />}
                   {saved ? "Guardado" : "Guardar no diário"}
                 </button>
+                <button
+                  data-testid="daily-reflection-share"
+                  onClick={() => setShowStoryModal(true)}
+                  className="flex items-center gap-2 rounded-full border border-[var(--border)] text-[var(--text-secondary)] px-4 py-2.5 text-sm hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors"
+                >
+                  <Share2 size={15} />
+                  <span>Card Stories</span>
+                </button>
               </div>
             </div>
           </motion.div>
         </motion.div>
       )}
+      <StoryCardModal
+        open={showStoryModal}
+        onClose={() => setShowStoryModal(false)}
+        text={reflection?.text}
+        author={personaName}
+        date={reflection?.date}
+      />
     </AnimatePresence>
   );
 }

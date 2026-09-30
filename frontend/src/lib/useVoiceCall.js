@@ -1,10 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API } from "@/lib/api";
 import { stopAllAudio } from "@/lib/useTTS";
+import { getCurrentLanguage } from "@/i18n/I18nContext";
 
 const SPEECH_THRESHOLD = 0.018;
 const SILENCE_MS = 700;
 const MAX_TURN_MS = 40000;
+
+const ERROR_MESSAGES = {
+  pt: {
+    process: "Não consegui processar sua fala. Tente de novo.",
+    mic: "Preciso de acesso ao microfone para conversar por voz.",
+  },
+  en: {
+    process: "I couldn't process your voice. Please try again.",
+    mic: "I need microphone access to talk by voice.",
+  },
+  es: {
+    process: "No pude procesar tu voz. Intenta de nuevo.",
+    mic: "Necesito acceso al micrófono para hablar por voz.",
+  },
+};
 
 function pickMime() {
   if (typeof MediaRecorder === "undefined") return "";
@@ -207,6 +223,8 @@ export function useVoiceCall({ getConversationId, onTurn }) {
         const ext = (rec.mimeType || mime).includes("mp4") ? "mp4" : "webm";
         const fd = new FormData();
         fd.append("audio", blob, `audio.${ext}`);
+        const lang = getCurrentLanguage();
+        if (lang) fd.append("lang", lang);
         const token = localStorage.getItem("aurelio_token");
         const res = await fetch(`${API}/conversations/${convId}/voice`, {
           method: "POST",
@@ -224,7 +242,9 @@ export function useVoiceCall({ getConversationId, onTurn }) {
         audioRef.current = null;
         if (activeRef.current) listen();
       } catch (e) {
-        setError("Não consegui processar sua fala. Tente de novo.");
+        const lang = getCurrentLanguage();
+        const msgs = ERROR_MESSAGES[lang] || ERROR_MESSAGES.pt;
+        setError(msgs.process);
         setPhase("error");
         setTimeout(() => activeRef.current && listen(), 1500);
       }
@@ -273,7 +293,9 @@ export function useVoiceCall({ getConversationId, onTurn }) {
       setActive(true);
       listen();
     } catch (e) {
-      setError("Preciso de acesso ao microfone para conversar por voz.");
+      const lang = getCurrentLanguage();
+      const msgs = ERROR_MESSAGES[lang] || ERROR_MESSAGES.pt;
+      setError(msgs.mic);
       setPhase("error");
       setActive(true);
     }

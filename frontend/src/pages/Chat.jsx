@@ -15,16 +15,11 @@ import { VoiceCall } from "@/components/VoiceCall";
 import { VoiceSettingsDialog } from "@/components/VoiceSettingsDialog";
 import { useVoiceCall } from "@/lib/useVoiceCall";
 import { useTTS } from "@/lib/useTTS";
+import { useI18n } from "@/i18n/I18nContext";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=300&q=85";
-
-const SUGGESTIONS = [
-  "O que estou evitando encarar hoje?",
-  "Como parar de me vitimizar?",
-  "Por que me falta disciplina?",
-  "Como ter mais coragem para agir?",
-];
 
 const draftKey = (id) => `aurelio_draft:${id || "new"}`;
 const activeConversationKey = "aurelio_active_conversation";
@@ -53,9 +48,11 @@ function forgetPending(messageId) {
 
 export default function Chat() {
   const navigate = useNavigate();
+  const { t, translateArray, language } = useI18n();
   const { user, logout, updateSettings } = useAuth();
   const { theme, toggle } = useTheme();
   const { speak, stop, playingId, loadingId, clearCache } = useTTS();
+  const SUGGESTIONS = translateArray("chat.welcome.suggestions");
 
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
@@ -145,7 +142,7 @@ export default function Chat() {
           }
         } else if (evt.error) {
           patchMessage(currentId, (m) => ({
-            content: m.content || "Desculpe, tive um problema para responder agora. Tente novamente.",
+            content: m.content || t("chat.errors.generic"),
             status: "error",
             streaming: false,
           }));
@@ -159,12 +156,12 @@ export default function Chat() {
       if (newTitle) setConversations((prev) => prev.map((c) => (c.id === convId ? { ...c, title: newTitle } : c)));
       setTimeout(loadConversations, 4000);
     } catch (e) {
-      patchMessage(currentId, (m) => (m.streaming ? { content: m.content || "Falha de conexão. A resposta continua sendo gerada — reabra a conversa em instantes.", streaming: false } : {}));
+      patchMessage(currentId, (m) => (m.streaming ? { content: m.content || t("chat.errors.connection"), streaming: false } : {}));
     } finally {
       activeStreamsRef.current.delete(currentId);
       activeStreamsRef.current.delete(assistantId);
     }
-  }, [loadConversations, patchMessage, scrollBottom]);
+  }, [loadConversations, patchMessage, scrollBottom, t]);
 
   const selectConversation = useCallback(async (id) => {
     setActiveId(id);
@@ -195,11 +192,11 @@ export default function Chat() {
           if (!next[cid] && prev[cid]) {
             if (cid !== activeIdRef.current && !notifiedRef.current.has(cid)) {
               notifiedRef.current.add(cid);
-              const title = conversationsRef.current?.find((c) => c.id === cid)?.title || "Sua conversa";
-              toast.success("Aurélio respondeu", {
-                description: `${title} — clique para ver.`,
+              const ctitle = conversationsRef.current?.find((c) => c.id === cid)?.title || "";
+              toast.success(t("chat.toast.replied"), {
+                description: ctitle ? `${ctitle} ${t("chat.toast.repliedDesc")}` : t("chat.toast.repliedDesc").replace("— ", ""),
                 action: {
-                  label: "Abrir",
+                  label: t("chat.toast.open"),
                   onClick: () => selectConversation(cid),
                 },
               });
@@ -232,7 +229,7 @@ export default function Chat() {
         }
       }
     } catch {}
-  }, [attachStream, selectConversation]);
+  }, [attachStream, selectConversation, t]);
 
   useEffect(() => {
     let mounted = true;
@@ -261,7 +258,7 @@ export default function Chat() {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [loadConversations, pollPending]);
+  }, [loadConversations, pollPending, t]);
 
   const restoredConversationRef = useRef(false);
   useEffect(() => {
@@ -323,24 +320,24 @@ export default function Chat() {
     } catch (e) {
       const status = e?.response?.status;
       if (status === 402) {
-        toast.error("Você atingiu seu limite diário de mensagens.", {
-          description: "Amanhã ele reseta, ou você pode assinar um plano com mais capacidade agora.",
+        toast.error(t("chat.toast.limitReached"), {
+          description: t("chat.toast.limitReachedDesc"),
           action: {
-            label: "Ver planos",
+            label: t("chat.toast.viewPlans"),
             onClick: () => navigate("/planos"),
           },
         });
       } else {
-        toast.error("Não foi possível enviar. Verifique sua conexão.");
+        toast.error(t("chat.toast.sendError"));
       }
     } finally {
       setSending(false);
     }
   };
 
-  const changeTheme = async (t) => {
-    await api.patch(`/conversations/${activeId}`, { theme: t });
-    setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, theme: t } : c)));
+  const changeTheme = async (th) => {
+    await api.patch(`/conversations/${activeId}`, { theme: th });
+    setConversations((prev) => prev.map((c) => (c.id === activeId ? { ...c, theme: th } : c)));
   };
 
   const saveQuote = async (text, message) => {
@@ -348,7 +345,7 @@ export default function Chat() {
       type: "quote", content: text, message_id: message?.id, conversation_id: activeIdRef.current,
     });
     setJournalKey((k) => k + 1);
-    toast.success("Guardado no seu diário.");
+    toast.success(t("chat.toast.journalSaved"));
   };
 
   const discussReflection = () => {
@@ -384,16 +381,16 @@ export default function Chat() {
       await updateSettings({ voice_id: voiceId });
       stop();
       clearCache();
-      toast.success("Voz do mentor atualizada.", { description: "Todas as próximas respostas usarão a nova voz." });
+      toast.success(t("chat.toast.voiceUpdated"), { description: t("chat.toast.voiceUpdatedDesc") });
       setVoiceSettingsOpen(false);
     } catch {
-      toast.error("Não foi possível atualizar a voz. Tente novamente.");
+      toast.error(t("chat.toast.voiceUpdateError"));
     } finally {
       setSavingVoice(false);
     }
   };
 
-  const personaName = user?.voice_config?.persona_name || "Aurélio";
+  const personaName = user?.voice_config?.persona_name || t("landing.brand");
   const activeConvo = conversations.find((c) => c.id === activeId);
 
   return (
@@ -419,8 +416,8 @@ export default function Chat() {
             <button
               onClick={() => navigate("/")}
               className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors"
-              aria-label="Voltar para a página inicial"
-              title="Voltar para a página inicial"
+              aria-label={t("app.backHome")}
+              title={t("app.backHome")}
             >
               <Home size={16} />
             </button>
@@ -428,7 +425,7 @@ export default function Chat() {
               <Menu size={22} />
             </button>
             <div className="font-serif-display text-lg font-semibold text-[var(--text-primary)] md:hidden">{personaName}</div>
-            <div className="hidden md:block eyebrow truncate">Conversa honesta sobre amadurecimento</div>
+            <div className="hidden md:block eyebrow truncate">{t("chat.header.chatLabel")}</div>
           </div>
           <div className="flex items-center gap-2">
             {activeConvo && (
@@ -437,18 +434,19 @@ export default function Chat() {
                 value={activeConvo.theme || "outros"}
                 onChange={(e) => changeTheme(e.target.value)}
                 className="hidden sm:block h-9 rounded-full border border-[var(--border)] bg-[var(--bg-card)] px-3 text-xs text-[var(--text-secondary)] outline-none hover:border-[var(--border-accent)]"
-                aria-label="Tema da conversa"
+                aria-label={t("chat.header.conversationTheme")}
               >
-                {THEMES.map((t) => (
-                  <option key={t.id} value={t.id}>{t.label}</option>
+                {THEMES.map((th) => (
+                  <option key={th.id} value={th.id}>{th.label}</option>
                 ))}
               </select>
             )}
+            <LanguageSelector />
             <button
               onClick={() => setVoiceSettingsOpen(true)}
               className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors"
-              aria-label="Configurações do mentor"
-              title="Configurar voz do mentor"
+              aria-label={t("chat.header.mentorSettings")}
+              title={t("chat.header.mentorSettings")}
               data-testid="chat-voice-settings-button"
             >
               <Settings size={16} />
@@ -458,7 +456,7 @@ export default function Chat() {
               onClick={() => setReflectionOpen(true)}
               disabled={!reflection}
               className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--terracotta)] hover:border-[var(--border-accent)] transition-colors disabled:opacity-40"
-              aria-label="Reflexão do dia"
+              aria-label={t("chat.header.dailyReflection")}
             >
               <Sun size={16} />
             </button>
@@ -471,10 +469,10 @@ export default function Chat() {
             <div className="h-full flex flex-col items-center justify-center px-6 text-center max-w-xl mx-auto">
               <img src={STATUE} alt={personaName} className="h-20 w-20 rounded-full object-cover border-2 border-[var(--border-accent)] mb-6" />
               <h2 className="font-serif-display text-3xl md:text-4xl font-bold text-[var(--text-primary)]">
-                Olá, {user?.name?.split(" ")[0]}. Sou {personaName}.
+                {t("chat.welcome.greeting")} {user?.name?.split(" ")[0]}. {t("chat.welcome.intro")} {personaName}.
               </h2>
               <p className="mt-3 text-[var(--text-secondary)] leading-relaxed">
-                Estou aqui para te dizer a verdade — com respeito, mas sem rodeios. O que pesa em você hoje?
+                {t("chat.welcome.description")}
               </p>
               <div className="mt-8 grid sm:grid-cols-2 gap-3 w-full">
                 {SUGGESTIONS.map((s) => (
@@ -515,7 +513,7 @@ export default function Chat() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 rows={1}
-                placeholder="Escreva com sinceridade…"
+                placeholder={t("chat.input.placeholder")}
                 className="flex-1 resize-none bg-transparent outline-none text-[var(--text-primary)] placeholder:text-[var(--text-muted)] max-h-40 leading-relaxed"
                 style={{ minHeight: "24px" }}
                 onInput={(e) => {
@@ -527,9 +525,9 @@ export default function Chat() {
                 data-testid="voice-call-button"
                 onClick={call.start}
                 disabled={sending}
-                title={`Falar com ${personaName} em tempo real`}
+                title={`${t("chat.input.voiceCallTitle")} ${personaName}`}
                 className="grid place-items-center h-9 w-9 rounded-full border border-[var(--border-accent)] text-[var(--terracotta)] hover:bg-[var(--terracotta)] hover:text-[#0f0e0d] transition-colors shrink-0 disabled:opacity-40"
-                aria-label={`Ligar para ${personaName}`}
+                aria-label={`${t("chat.input.voiceCall")} ${personaName}`}
               >
                 <Phone size={16} />
               </button>
@@ -538,12 +536,13 @@ export default function Chat() {
                 onClick={() => send()}
                 disabled={!input.trim() || sending}
                 className="grid place-items-center h-9 w-9 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] disabled:opacity-40 hover:opacity-90 transition-opacity shrink-0"
+                aria-label={t("chat.input.send")}
               >
                 <SendHorizontal size={17} />
               </button>
             </div>
             <p className="text-center text-[11px] text-[var(--text-muted)] mt-2.5">
-              {personaName} pode se enganar. Em crise, ligue para o CVV — 188.
+              {personaName} {t("chat.footer")}
             </p>
           </div>
         </div>
@@ -567,9 +566,9 @@ export default function Chat() {
         onOpenChange={setVoiceSettingsOpen}
         selectedVoiceId={user?.settings?.voice_id}
         onSave={saveVoiceSettings}
-        saveLabel={savingVoice ? "Salvando…" : "Salvar voz"}
-        title="Configurar voz do mentor"
-        description="Escolha uma voz humana e natural para o seu mentor. Você pode mudar quando quiser."
+        saveLabel={savingVoice ? t("app.saving") : t("voiceSettings.saveLabel")}
+        title={t("voiceSettings.title")}
+        description={t("voiceSettings.description")}
       />
     </div>
   );

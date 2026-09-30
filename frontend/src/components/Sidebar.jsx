@@ -3,11 +3,13 @@ import { Plus, Trash2, LogOut, X, BookMarked, ChevronDown, Sparkles, CreditCard 
 import { useNavigate } from "react-router-dom";
 import { THEMES, themeOf } from "@/lib/themes";
 import { SubscriptionBell } from "@/components/SubscriptionBell";
+import { useI18n } from "@/i18n/I18nContext";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=200&q=80";
 
 const ConversationItem = memo(function ConversationItem({ c, active, onSelect, onDelete, hasPending, hasNew }) {
+  const { t } = useI18n();
   const { Icon } = themeOf(c.theme);
   return (
     <div
@@ -22,10 +24,10 @@ const ConversationItem = memo(function ConversationItem({ c, active, onSelect, o
       <Icon size={15} className="shrink-0 text-[var(--text-muted)]" />
       <span className="flex-1 truncate text-sm">{c.title}</span>
       {hasPending && (
-        <span className="grid place-items-center shrink-0 h-2.5 w-2.5 rounded-full bg-[var(--terracotta)] animate-pulse" title="Aurélio está respondendo" />
+        <span className="grid place-items-center shrink-0 h-2.5 w-2.5 rounded-full bg-[var(--terracotta)] animate-pulse" title={t("chat.sidebar.responding")} />
       )}
       {!hasPending && hasNew && (
-        <span className="grid place-items-center shrink-0 h-2 w-2 rounded-full bg-green-500" title="Nova resposta disponível" />
+        <span className="grid place-items-center shrink-0 h-2 w-2 rounded-full bg-green-500" title={t("chat.sidebar.newReply")} />
       )}
       <button
         data-testid="chat-history-delete"
@@ -98,15 +100,19 @@ export function Sidebar({
   pendingByConversation,
   newByConversation,
 }) {
+  const { t } = useI18n();
   const [filter, setFilter] = useState("all");
   const usedThemes = THEMES.filter((t) => conversations.some((c) => themeOf(c.theme).id === t.id));
   const visible = filter === "all" ? conversations : conversations.filter((c) => themeOf(c.theme).id === filter);
   const navigate = useNavigate();
-  const planLabel = user?.plan?.name || user?.subscription?.plan?.name || "Gratuito";
-  const isPaid = planLabel !== "Gratuito";
+  const planLabel = user?.plan?.name || user?.subscription?.plan?.name || t("common.free");
+  const isPaid = user?.subscription?.status === "active" || user?.subscription?.status === "ativo" || (planLabel !== t("common.free") && planLabel !== "Gratuito");
   const userEmailMasked = user?.email_masked || maskEmail(user?.email);
   const primaryLine = user?.name?.trim() ? user.name : userEmailMasked;
-  const secondaryLine = user?.name?.trim() ? userEmailMasked : (isPaid ? `Plano ${planLabel}` : "Plano gratuito");
+  const paidPlanLabel = planLabel && planLabel !== t("common.free") && planLabel !== "Gratuito" ? planLabel : null;
+  const secondaryLine = user?.name?.trim()
+    ? userEmailMasked
+    : (paidPlanLabel ? paidPlanLabel : t("common.free"));
   const subscription = user?.subscription || null;
 
   return (
@@ -119,12 +125,12 @@ export function Sidebar({
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <div className="flex items-center gap-3">
-            <img src={STATUE} alt={user?.voice_config?.persona_name || "Aurélio"} className="h-9 w-9 rounded-full object-cover border border-[var(--border-accent)]" />
+            <img src={STATUE} alt={user?.voice_config?.persona_name || t("landing.brand")} className="h-9 w-9 rounded-full object-cover border border-[var(--border-accent)]" />
             <div className="leading-tight">
               <div className="font-serif-display text-xl font-semibold text-[var(--text-primary)]">
-                {user?.voice_config?.persona_name || "Aurélio"}
+                {user?.voice_config?.persona_name || t("landing.brand")}
               </div>
-              <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">Mentor de amadurecimento</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">{t("chat.sidebar.mentorLabel")}</div>
             </div>
           </div>
           <button className="md:hidden text-[var(--text-muted)]" onClick={onClose}>
@@ -138,34 +144,34 @@ export function Sidebar({
             onClick={onNew}
             className="w-full flex items-center gap-2 justify-center rounded-full border border-[var(--border-accent)] text-[var(--terracotta)] py-2.5 text-sm font-medium hover:bg-[var(--terracotta)] hover:text-[#0f0e0d] transition-colors"
           >
-            <Plus size={16} /> Nova conversa
+            <Plus size={16} /> {t("chat.sidebar.newConversation")}
           </button>
           <button
             data-testid="open-journal-button"
             onClick={onOpenJournal}
             className="w-full flex items-center gap-2 justify-center rounded-full border border-[var(--border)] text-[var(--text-secondary)] py-2.5 text-sm font-medium hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] transition-colors"
           >
-            <BookMarked size={16} /> Diário de reflexões
+            <BookMarked size={16} /> {t("chat.sidebar.journal")}
           </button>
         </div>
 
         <div className="px-4 mt-6 mb-2 flex items-center justify-between">
-          <span className="eyebrow">Conversas por tema</span>
+          <span className="eyebrow">{t("chat.sidebar.conversationsByTheme")}</span>
         </div>
         {usedThemes.length > 1 && (
           <div className="px-3 pb-2 flex gap-1.5 overflow-x-auto scrollbar-none">
-            {[{ id: "all", label: "Todos" }, ...usedThemes].map((t) => (
+            {[{ id: "all", label: t("common.all") }, ...usedThemes].map((th) => (
               <button
-                key={t.id}
-                data-testid={`theme-filter-${t.id}`}
-                onClick={() => setFilter(t.id)}
+                key={th.id}
+                data-testid={`theme-filter-${th.id}`}
+                onClick={() => setFilter(th.id)}
                 className={`shrink-0 rounded-full px-3 py-1 text-[11px] border transition-colors ${
-                  filter === t.id
+                  filter === th.id
                     ? "border-[var(--border-accent)] text-[var(--terracotta)]"
                     : "border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 }`}
               >
-                {t.label}
+                {th.label}
               </button>
             ))}
           </div>
@@ -174,17 +180,17 @@ export function Sidebar({
         <div className="flex-1 overflow-y-auto px-3 space-y-2 pb-2">
           {conversations.length === 0 && (
             <p className="px-2 text-sm text-[var(--text-muted)] leading-relaxed">
-              Suas reflexões aparecerão aqui, organizadas por tema, para você retomar quando quiser.
+              {t("chat.sidebar.emptyState")}
             </p>
           )}
           {filter === "all"
-            ? THEMES.map((t) => {
-                const items = visible.filter((c) => themeOf(c.theme).id === t.id);
+            ? THEMES.map((th) => {
+                const items = visible.filter((c) => themeOf(c.theme).id === th.id);
                 if (!items.length) return null;
                 return (
                   <ThemeGroup
-                    key={t.id}
-                    theme={t.id}
+                    key={th.id}
+                    theme={th.id}
                     items={items}
                     activeId={activeId}
                     onSelect={onSelect}
@@ -213,7 +219,7 @@ export function Sidebar({
             onClick={() => navigate("/meu-plano")}
             className="w-full flex items-center gap-2 justify-center rounded-full border border-[var(--border)] text-[var(--text-secondary)] py-2.5 text-sm font-medium hover:border-[var(--border-accent)] hover:text-[var(--text-primary)] transition-colors"
           >
-            <CreditCard size={16} /> Meu plano
+            <CreditCard size={16} /> {t("chat.sidebar.myPlan")}
           </button>
           {!isPaid && (
             <button
@@ -223,10 +229,10 @@ export function Sidebar({
             >
               <div className="flex items-center gap-2 mb-1.5">
                 <Sparkles size={14} className="text-[var(--terracotta)] shrink-0" />
-                <span className="text-[11px] uppercase tracking-[0.18em] font-semibold text-[var(--terracotta)]">Plano gratuito</span>
+                <span className="text-[11px] uppercase tracking-[0.18em] font-semibold text-[var(--terracotta)]">{t("chat.sidebar.freePlanUpgrade")}</span>
               </div>
               <p className="text-[12px] leading-snug text-[var(--text-secondary)]">
-                10 mensagens por dia. <span className="text-[var(--terracotta)] font-medium">Ver planos →</span>
+                {t("chat.sidebar.freePlanMessages")}
               </p>
             </button>
           )}
@@ -241,7 +247,7 @@ export function Sidebar({
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm truncate text-[var(--text-primary)] font-medium">{primaryLine || "Usuário"}</div>
+              <div className="text-sm truncate text-[var(--text-primary)] font-medium">{primaryLine || t("common.free")}</div>
               <div className="text-xs truncate text-[var(--text-muted)] flex items-center gap-1.5">
                 {secondaryLine}
               </div>
@@ -251,7 +257,7 @@ export function Sidebar({
               data-testid="logout-button"
               onClick={onLogout}
               className="text-[var(--text-muted)] hover:text-[var(--terracotta)] transition-colors"
-              aria-label="Sair"
+              aria-label={t("auth.login")}
             >
               <LogOut size={17} />
             </button>

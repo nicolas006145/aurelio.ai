@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getCurrentLanguage } from "@/i18n/I18nContext";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
@@ -8,6 +9,10 @@ export const api = axios.create({ baseURL: API });
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("aurelio_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  try {
+    const lang = getCurrentLanguage();
+    if (lang) config.headers["Aurelio-Language"] = lang;
+  } catch {}
   return config;
 });
 

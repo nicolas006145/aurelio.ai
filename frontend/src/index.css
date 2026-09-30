@@ -91,12 +91,12 @@ body {
 }
 
 @keyframes voicewave {
-  0%, 100% { transform: scaleY(0.35); }
-  50% { transform: scaleY(1); }
+  0%, 100% { transform: scaleY(0.2); opacity: 0.65; }
+  50% { transform: scaleY(1); opacity: 1; }
 }
 .voicebar {
-  animation: voicewave 0.9s ease-in-out infinite;
-  transform-origin: center;
+  animation: voicewave 0.85s ease-in-out infinite;
+  transform-origin: bottom;
 }
 
 @keyframes fadeup {

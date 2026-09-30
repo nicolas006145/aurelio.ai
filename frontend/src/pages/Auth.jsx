@@ -5,11 +5,14 @@ import { Loader2, ArrowLeft, Sparkles, SkipForward } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatApiErrorDetail } from "@/lib/api";
 import { VoiceSettingsDialog } from "@/components/VoiceSettingsDialog";
+import { useI18n } from "@/i18n/I18nContext";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=1000&q=85";
 
 export default function Auth() {
+  const { t } = useI18n();
   const [mode, setMode] = useState("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -77,12 +80,12 @@ export default function Auth() {
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-[var(--bg-main)]">
       <div className="hidden md:block relative">
-        <img src={STATUE} alt="Aurélio" className="h-full w-full object-cover grayscale-[0.2]" />
+        <img src={STATUE} alt={t("landing.brand")} className="h-full w-full object-cover grayscale-[0.2]" />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-main)] via-transparent to-transparent" />
         <div className="absolute bottom-12 left-12 right-12">
-          <p className="eyebrow mb-3">Aurélio</p>
+          <p className="eyebrow mb-3">{t("landing.brand")}</p>
           <p className="font-serif-display text-3xl leading-tight text-[#f2ede4]">
-            “A disciplina de hoje é a liberdade de amanhã.”
+            {t("auth.sideQuote")}
           </p>
         </div>
       </div>
@@ -94,20 +97,23 @@ export default function Auth() {
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-sm relative z-10"
         >
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--terracotta)] mb-8 transition-colors"
-          >
-            <ArrowLeft size={15} /> Voltar
-          </Link>
+          <div className="flex items-center justify-between mb-8">
+            <Link
+              to="/"
+              className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--terracotta)] transition-colors"
+            >
+              <ArrowLeft size={15} /> {t("app.goBack")}
+            </Link>
+            <LanguageSelector />
+          </div>
 
           <h1 className="font-serif-display text-4xl font-bold text-[var(--text-primary)]">
-            {isLogin ? "Bem-vindo de volta" : "Comece sua jornada"}
+            {isLogin ? t("auth.welcomeBack") : t("auth.startJourney")}
           </h1>
           <p className="mt-2 text-[var(--text-secondary)] text-sm">
             {isLogin
-              ? "Entre para retomar suas conversas com Aurélio."
-              : "Crie sua conta. Suas reflexões ficam salvas com segurança."}
+              ? t("auth.loginSubtitle")
+              : t("auth.registerSubtitle")}
           </p>
 
           <button
@@ -125,12 +131,12 @@ export default function Auth() {
               <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2 1.4-4.7 2.4-8.5 2.4-6.2 0-11.5-4.1-13.4-9.9l-8 6.2C6.5 42.6 14.6 48 24 48z" />
             </svg>
             )}
-            Continuar com Google
+            {t("auth.continueWithGoogle")}
           </button>
 
           <div className="flex items-center gap-3 my-6">
             <span className="h-px flex-1 bg-[var(--border)]" />
-            <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">ou com e-mail</span>
+            <span className="text-xs uppercase tracking-wider text-[var(--text-muted)]">{t("auth.orEmail")}</span>
             <span className="h-px flex-1 bg-[var(--border)]" />
           </div>
 
@@ -138,7 +144,7 @@ export default function Auth() {
             {!isLogin && (
               <div>
                 <label className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
-                  Nome
+                  {t("auth.name")}
                 </label>
                 <input
                   data-testid="auth-register-name-input"
@@ -146,13 +152,13 @@ export default function Auth() {
                   onChange={(e) => setName(e.target.value)}
                   required
                   className="mt-1.5 w-full rounded-lg bg-[var(--bg-card)] border border-[var(--border)] px-4 py-3 text-[var(--text-primary)] outline-none focus:border-[var(--border-accent)] transition-colors"
-                  placeholder="Como devo te chamar?"
+                  placeholder={t("auth.namePlaceholder")}
                 />
               </div>
             )}
             <div>
               <label className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
-                E-mail
+                {t("auth.email")}
               </label>
               <input
                 data-testid={isLogin ? "auth-login-email-input" : "auth-register-email-input"}
@@ -161,12 +167,12 @@ export default function Auth() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 className="mt-1.5 w-full rounded-lg bg-[var(--bg-card)] border border-[var(--border)] px-4 py-3 text-[var(--text-primary)] outline-none focus:border-[var(--border-accent)] transition-colors"
-                placeholder="seu@email.com"
+                placeholder={t("auth.emailPlaceholder")}
               />
             </div>
             <div>
               <label className="text-xs uppercase tracking-wider text-[var(--text-muted)]">
-                Senha
+                {t("auth.password")}
               </label>
               <input
                 data-testid={isLogin ? "auth-login-password-input" : "auth-register-password-input"}
@@ -176,7 +182,7 @@ export default function Auth() {
                 required
                 minLength={6}
                 className="mt-1.5 w-full rounded-lg bg-[var(--bg-card)] border border-[var(--border)] px-4 py-3 text-[var(--text-primary)] outline-none focus:border-[var(--border-accent)] transition-colors"
-                placeholder="Mínimo de 6 caracteres"
+                placeholder={t("auth.passwordPlaceholder")}
               />
             </div>
 
@@ -193,12 +199,12 @@ export default function Auth() {
               className="w-full flex items-center justify-center gap-2 rounded-full bg-[var(--terracotta)] text-[#0f0e0d] py-3.5 font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
             >
               {loading && <Loader2 size={17} className="animate-spin" />}
-              {isLogin ? "Entrar" : "Criar conta"}
+              {isLogin ? t("auth.login") : t("auth.createAccount")}
             </button>
           </form>
 
           <p className="mt-6 text-sm text-[var(--text-secondary)] text-center">
-            {isLogin ? "Ainda não tem conta?" : "Já tem uma conta?"}{" "}
+            {isLogin ? t("auth.noAccount") : t("auth.hasAccount")}{" "}
             <button
               data-testid="auth-toggle-mode"
               onClick={() => {
@@ -207,7 +213,7 @@ export default function Auth() {
               }}
               className="text-[var(--terracotta)] font-medium hover:underline"
             >
-              {isLogin ? "Cadastre-se" : "Entrar"}
+              {isLogin ? t("auth.register") : t("auth.signIn")}
             </button>
           </p>
         </motion.div>
@@ -221,9 +227,9 @@ export default function Auth() {
         }}
         selectedVoiceId={pendingUser?.settings?.voice_id}
         onSave={saveVoice}
-        title="Configure seu mentor"
-        description="Bem-vindo! Antes de começar, escolha a voz que vai te acompanhar nas reflexões. Você pode mudar isso depois."
-        saveLabel={voiceSaving ? "Salvando…" : "Continuar com essa voz"}
+        title={t("auth.voiceSetup.title")}
+        description={t("auth.voiceSetup.description")}
+        saveLabel={voiceSaving ? t("auth.voiceSetup.saving") : t("auth.voiceSetup.continueWithVoice")}
       />
       {showVoiceSetup && (
         <div className="fixed z-[60] left-1/2 top-[calc(50%+min(60vh,480px)/2+12px)] -translate-x-1/2 sm:top-[calc(50%+420px/2+20px)]">
@@ -232,7 +238,7 @@ export default function Auth() {
             onClick={goToChat}
             className="flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-main)]/95 backdrop-blur px-4 py-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-accent)] transition-colors"
           >
-            <SkipForward size={14} /> Pular por enquanto
+            <SkipForward size={14} /> {t("app.skip")}
           </button>
         </div>
       )}

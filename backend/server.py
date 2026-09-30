@@ -62,16 +62,16 @@ AVAILABLE_VOICES = {
         "id": "male_mature",
         "label": "Aurélio — voz masculina madura",
         "voice": "onyx",
-        "speed": 0.82,
+        "speed": 0.90,
         "gender": "male",
         "persona_name": "Aurélio",
-        "description": "Voz grave, serena e pausada. Ideal para quem prefere um mentor masculino.",
+        "description": "Voz grave, madura e serena. Ideal para quem prefere um mentor estoico.",
     },
     "female_serene": {
         "id": "female_serene",
         "label": "Clara — voz feminina serena",
         "voice": "shimmer",
-        "speed": 0.95,
+        "speed": 0.94,
         "gender": "female",
         "persona_name": "Clara",
         "description": "Voz suave, acolhedora e serena. Ideal para quem prefere uma mentora feminina.",
@@ -89,7 +89,7 @@ AVAILABLE_VOICES = {
         "id": "male_confident",
         "label": "Marco — voz masculina confiante",
         "voice": "echo",
-        "speed": 0.86,
+        "speed": 0.88,
         "gender": "male",
         "persona_name": "Marco",
         "description": "Voz profunda, confiante e direta. Para quem gosta de firmeza com serenidade.",
@@ -839,14 +839,16 @@ def clean_for_tts(text: str) -> str:
     text = re.sub(r"`{1,3}[^`]*`{1,3}", "", text)
     text = re.sub(r"[*_#>~|\[\]]", "", text)
     text = text.replace("/", " ou ")
-    text = re.sub(r"(\d+)\s*[-–]\s*(\d+)", r"\1, \2", text)
-    text = text.replace("—", ",").replace("–", ",").replace(";", ",")
+    text = re.sub(r"(\d+)\s*[-–]\s*(\d+)", r"\1 a \2", text)
+    text = text.replace(";", ".")
+    text = re.sub(r"\s*[–—]\s*", " — ", text)
     for patt, repl in _ABBREV_PT.items():
         text = re.sub(patt, repl, text, flags=re.IGNORECASE)
     text = re.sub(r"([!?])\1+", r"\1", text)
     text = re.sub(r"\.{4,}", "...", text)
     text = re.sub(r"\"(.{1,80})\"", r"\1", text)
     text = re.sub(r"\s+([,.;:!?])", r"\1", text)
+    text = re.sub(r"([,.;:!?])(?=[^\s\d])", r"\1 ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:3800]
 
@@ -1979,8 +1981,8 @@ _tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
 TTS_MODEL = "tts-1-hd"
 
 DEMO_LINE = (
-    "Você não precisa de mais motivação. Precisa de honestidade. "
-    "Pare de fugir do que já sabe que precisa encarar, e comece hoje, ainda que com medo."
+    "Você não precisa de mais motivação. Precisa de honestidade... "
+    "Pare de fugir do que você já sabe que precisa encarar — e comece hoje. Mesmo com medo."
 )
 
 
@@ -2019,10 +2021,11 @@ def audio_response(audio: bytes) -> Response:
 
 
 @api_router.get("/tts/demo")
-async def tts_demo(voice_id: str = DEFAULT_VOICE_ID):
+async def tts_demo(voice_id: str = DEFAULT_VOICE_ID, lang: str = "pt", text: Optional[str] = None):
     try:
         vid = voice_id if voice_id in AVAILABLE_VOICES else DEFAULT_VOICE_ID
-        return audio_response(await _synth_cached(DEMO_LINE, vid))
+        sample = text.strip() if (text and text.strip()) else DEMO_LINE
+        return audio_response(await _synth_cached(sample, vid))
     except Exception as e:
         logger.exception("TTS demo error")
         raise HTTPException(status_code=500, detail=f"Falha na síntese de voz: {e}")

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
+import { I18nProvider, useI18n } from "@/i18n/I18nContext";
 import { Toaster } from "@/components/ui/sonner";
 import Landing from "@/pages/Landing";
 import Auth from "@/pages/Auth";
@@ -8,10 +9,12 @@ import Chat from "@/pages/Chat";
 import MyPlan from "@/pages/MyPlan";
 import PricingPlans from "@/components/PricingPlans";
 
-function Loader({ label = "Aurélio." }) {
+function Loader({ label }) {
+  const { t } = useI18n();
+  const displayLabel = label || t("app.loading");
   return (
     <div className="min-h-screen grid place-items-center bg-[var(--bg-main)]">
-      <div className="font-serif-display text-3xl text-[var(--terracotta)] animate-pulse">{label}</div>
+      <div className="font-serif-display text-3xl text-[var(--terracotta)] animate-pulse">{displayLabel}</div>
     </div>
   );
 }
@@ -33,6 +36,7 @@ function AuthRoute() {
 // Handles {redirect}#session_id=... after Google login (Emergent Auth).
 function AuthCallback() {
   const { exchangeSession } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const processed = useRef(false);
@@ -46,8 +50,8 @@ function AuthCallback() {
     window.history.replaceState(null, "", location.pathname);
     exchangeSession(sessionId)
       .then(() => navigate("/chat", { replace: true }))
-      .catch(() => setError("Não foi possível concluir o login com Google."));
-  }, [exchangeSession, navigate, location]);
+      .catch(() => setError(t("auth.googleCallbackError")));
+  }, [exchangeSession, navigate, location, t]);
 
   if (error)
     return (
@@ -58,12 +62,12 @@ function AuthCallback() {
             onClick={() => navigate("/auth", { replace: true })}
             className="mt-4 text-[var(--terracotta)] underline"
           >
-            Voltar ao login
+            {t("app.goBack")}
           </button>
         </div>
       </div>
     );
-  return <Loader label="Entrando…" />;
+  return <Loader label={t("app.entering")} />;
 }
 
 function AppRouter() {
@@ -97,12 +101,14 @@ function AppRouter() {
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRouter />
-      </BrowserRouter>
-      <Toaster position="top-center" />
-    </AuthProvider>
+    <I18nProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRouter />
+        </BrowserRouter>
+        <Toaster position="top-center" />
+      </AuthProvider>
+    </I18nProvider>
   );
 }
 
