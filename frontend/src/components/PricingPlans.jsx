@@ -16,6 +16,8 @@ const PLAN_ICONS = {
   free: null,
 };
 
+const PRICE_MAP = { free: 0, founder: 7.9, mentor: 19.9 };
+
 function PlanCard({ plan, onSelect, t }) {
   const Icon = plan.icon;
   return (
@@ -93,8 +95,6 @@ export default function PricingPlans() {
   const { user } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-
-const PRICE_MAP = { free: 0, founder: 7.9, mentor: 19.9 };
 
   const PLANS = useMemo(() => {
     return ["free", "founder", "mentor"].map((id) => {
