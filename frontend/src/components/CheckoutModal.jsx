@@ -618,7 +618,7 @@ export default function CheckoutModal({ open, onOpenChange, plan, user }) {
                     <div className="bg-white p-3 rounded-2xl inline-block shadow-lg">
                       <img
                         src={`data:image/png;base64,${pixQrCode}`}
-                        alt="QR Code Pix"
+                        alt={t("checkout.pix.qrAlt")}
                         className="h-48 w-48 object-contain"
                       />
                     </div>

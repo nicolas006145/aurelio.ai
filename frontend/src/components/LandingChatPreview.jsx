@@ -98,7 +98,7 @@ export function LandingChatPreview({ onStart }) {
         <div className="relative inline-flex items-center gap-1.5 p-1 mt-7 rounded-full border border-[var(--border-accent)]/60 bg-[var(--bg-card)] shadow-lg">
           {!hasInteracted && (
             <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap bg-[var(--terracotta)] text-[#0f0e0d] px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-md flex items-center gap-1 animate-bounce">
-              <Sparkles size={10} /> Alternar mentor
+              <Sparkles size={10} /> {t("landing.chatPreview.switchMentor")}
             </span>
           )}
           <button
@@ -112,10 +112,10 @@ export function LandingChatPreview({ onStart }) {
           >
             <img
               src={STATUE_AURELIO}
-              alt="Aurélio"
+              alt={t("landing.brand")}
               className="w-4 h-4 rounded-full object-cover border border-black/20"
             />
-            Aurélio (Estoico)
+            {t("landing.chatPreview.aurelioBadge")}
           </button>
           <button
             type="button"
@@ -128,10 +128,10 @@ export function LandingChatPreview({ onStart }) {
           >
             <img
               src={AVATAR_LUA}
-              alt="Lua"
+              alt={t("landing.luaName")}
               className="w-4 h-4 rounded-full object-cover border border-black/20"
             />
-            Lua (Calorosa)
+            {t("landing.chatPreview.luaBadge")}
           </button>
         </div>
       </div>
@@ -146,17 +146,17 @@ export function LandingChatPreview({ onStart }) {
             <div className="relative">
               <img
                 src={persona === "lua" ? AVATAR_LUA : STATUE_AURELIO}
-                alt={persona === "lua" ? "Lua" : "Aurélio"}
+                alt={persona === "lua" ? t("landing.luaName") : t("landing.brand")}
                 className="w-9 h-9 rounded-full object-cover border border-[var(--border-accent)]"
               />
               <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--bg-main)]" />
             </div>
             <div>
               <div className="font-serif-display font-semibold text-[var(--text-primary)] leading-none text-base">
-                {persona === "lua" ? "Lua" : "Aurélio"}
+                {persona === "lua" ? t("landing.luaName") : t("landing.brand")}
               </div>
               <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                {persona === "lua" ? "Mentora de amadurecimento" : "Mentor estoico"} · Online
+                {persona === "lua" ? t("landing.chatPreview.luaRole") : t("landing.chatPreview.aurelioRole")} · {t("landing.chatPreview.statusOnline")}
               </div>
             </div>
           </div>
@@ -212,7 +212,7 @@ export function LandingChatPreview({ onStart }) {
               >
                 <div className="flex items-center gap-2">
                   <span className="font-serif-display text-sm font-semibold text-[var(--terracotta)]">
-                    {persona === "lua" ? "Lua" : "Aurélio"}
+                    {persona === "lua" ? t("landing.luaName") : t("landing.brand")}
                   </span>
                   <span className="h-px flex-1 bg-[var(--border)]/60" />
                 </div>
@@ -296,7 +296,7 @@ export function LandingChatPreview({ onStart }) {
               >
                 <div className="flex items-center gap-2">
                   <span className="font-serif-display text-sm font-semibold text-[var(--terracotta)]">
-                    Aurélio
+                    {t("landing.brand")}
                   </span>
                   <span className="h-px flex-1 bg-[var(--border)]/60" />
                 </div>
@@ -345,7 +345,7 @@ export function LandingChatPreview({ onStart }) {
         {/* Bottom Callout Bar */}
         <div className="relative z-10 px-5 py-4 border-t border-[var(--border)] bg-[var(--bg-main)]/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <div className="text-xs text-[var(--text-secondary)]">
-            <span className="text-[var(--terracotta)] font-semibold">Sem julgamentos.</span> Conversas reais e salvas no seu perfil.
+            <span className="text-[var(--terracotta)] font-semibold">{t("landing.chatPreview.noJudgement")}</span> {t("landing.chatPreview.conversationsSaved")}
           </div>
           <button
             type="button"

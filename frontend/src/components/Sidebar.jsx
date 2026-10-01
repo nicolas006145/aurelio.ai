@@ -1,16 +1,15 @@
 import { useState, memo } from "react";
 import { Plus, Trash2, LogOut, X, BookMarked, ChevronDown, Sparkles, CreditCard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { THEMES, themeOf } from "@/lib/themes";
+import { useThemes, themeOf } from "@/lib/themes";
 import { SubscriptionBell } from "@/components/SubscriptionBell";
 import { useI18n } from "@/i18n/I18nContext";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=200&q=80";
 
-const ConversationItem = memo(function ConversationItem({ c, active, onSelect, onDelete, hasPending, hasNew }) {
-  const { t } = useI18n();
-  const { Icon } = themeOf(c.theme);
+const ConversationItem = memo(function ConversationItem({ c, active, onSelect, onDelete, hasPending, hasNew, t }) {
+  const { Icon } = themeOf(c.theme, t);
   return (
     <div
       data-testid="chat-history-item"
@@ -43,9 +42,9 @@ const ConversationItem = memo(function ConversationItem({ c, active, onSelect, o
   );
 });
 
-function ThemeGroup({ theme, items, activeId, onSelect, onDelete, pendingMap, newMap }) {
+function ThemeGroup({ theme, items, activeId, onSelect, onDelete, pendingMap, newMap, t }) {
   const [open, setOpen] = useState(true);
-  const { label, Icon } = themeOf(theme);
+  const { label, Icon } = themeOf(theme, t);
   return (
     <div data-testid={`theme-group-${theme}`}>
       <button
@@ -58,17 +57,18 @@ function ThemeGroup({ theme, items, activeId, onSelect, onDelete, pendingMap, ne
         <ChevronDown size={12} className={`transition-transform ${open ? "" : "-rotate-90"}`} />
       </button>
       {open &&
-        items.map((c) => (
-          <ConversationItem
-            key={c.id}
-            c={c}
-            active={activeId === c.id}
-            onSelect={onSelect}
-            onDelete={onDelete}
-            hasPending={pendingMap?.[c.id]}
-            hasNew={newMap?.[c.id]}
-          />
-        ))}
+          items.map((c) => (
+            <ConversationItem
+              key={c.id}
+              c={c}
+              active={activeId === c.id}
+              onSelect={onSelect}
+              onDelete={onDelete}
+              hasPending={pendingMap?.[c.id]}
+              hasNew={newMap?.[c.id]}
+              t={t}
+            />
+          ))}
     </div>
   );
 }
@@ -101,15 +101,16 @@ export function Sidebar({
   newByConversation,
 }) {
   const { t } = useI18n();
+  const THEMES = useThemes();
   const [filter, setFilter] = useState("all");
-  const usedThemes = THEMES.filter((t) => conversations.some((c) => themeOf(c.theme).id === t.id));
-  const visible = filter === "all" ? conversations : conversations.filter((c) => themeOf(c.theme).id === filter);
+  const usedThemes = THEMES.filter((th) => conversations.some((c) => themeOf(c.theme, t).id === th.id));
+  const visible = filter === "all" ? conversations : conversations.filter((c) => themeOf(c.theme, t).id === filter);
   const navigate = useNavigate();
   const planLabel = user?.plan?.name || user?.subscription?.plan?.name || t("common.free");
-  const isPaid = user?.subscription?.status === "active" || user?.subscription?.status === "ativo" || (planLabel !== t("common.free") && planLabel !== "Gratuito");
+  const isPaid = user?.subscription?.status === "active" || user?.subscription?.status === "ativo" || (planLabel !== t("common.free"));
   const userEmailMasked = user?.email_masked || maskEmail(user?.email);
   const primaryLine = user?.name?.trim() ? user.name : userEmailMasked;
-  const paidPlanLabel = planLabel && planLabel !== t("common.free") && planLabel !== "Gratuito" ? planLabel : null;
+  const paidPlanLabel = planLabel && planLabel !== t("common.free") ? planLabel : null;
   const secondaryLine = user?.name?.trim()
     ? userEmailMasked
     : (paidPlanLabel ? paidPlanLabel : t("common.free"));
@@ -185,7 +186,7 @@ export function Sidebar({
           )}
           {filter === "all"
             ? THEMES.map((th) => {
-                const items = visible.filter((c) => themeOf(c.theme).id === th.id);
+                const items = visible.filter((c) => themeOf(c.theme, t).id === th.id);
                 if (!items.length) return null;
                 return (
                   <ThemeGroup
@@ -197,6 +198,7 @@ export function Sidebar({
                     onDelete={onDelete}
                     pendingMap={pendingByConversation}
                     newMap={newByConversation}
+                    t={t}
                   />
                 );
               })
@@ -209,6 +211,7 @@ export function Sidebar({
                   onDelete={onDelete}
                   hasPending={pendingByConversation?.[c.id]}
                   hasNew={newByConversation?.[c.id]}
+                  t={t}
                 />
               ))}
         </div>

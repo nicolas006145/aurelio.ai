@@ -33,6 +33,43 @@ const LANG_ALIASES = {
   "es": "es",
 };
 
+const LANG_TO_HREFLANG = {
+  pt: "pt-BR",
+  en: "en",
+  es: "es",
+};
+
+const HREFLANG_CODES = ["pt-BR", "en", "es"];
+
+function getHref() {
+  if (typeof window === "undefined") return "";
+  return window.location.href;
+}
+
+function upsertHreflangs() {
+  if (typeof document === "undefined") return;
+  const head = document.head;
+  const href = getHref();
+  HREFLANG_CODES.forEach((code) => {
+    let link = head.querySelector(`link[rel="alternate"][hreflang="${code}"]`);
+    if (!link) {
+      link = document.createElement("link");
+      link.setAttribute("rel", "alternate");
+      link.setAttribute("hreflang", code);
+      head.appendChild(link);
+    }
+    link.setAttribute("href", href);
+  });
+  let xdef = head.querySelector('link[rel="alternate"][hreflang="x-default"]');
+  if (!xdef) {
+    xdef = document.createElement("link");
+    xdef.setAttribute("rel", "alternate");
+    xdef.setAttribute("hreflang", "x-default");
+    head.appendChild(xdef);
+  }
+  xdef.setAttribute("href", href);
+}
+
 function detectBrowserLanguage() {
   try {
     const nav = typeof navigator !== "undefined" ? navigator : null;
@@ -100,7 +137,9 @@ export function I18nProvider({ children }) {
     try {
       localStorage.setItem(STORAGE_KEY, language);
       if (typeof document !== "undefined") {
-        document.documentElement.setAttribute("lang", language);
+        const hreflang = LANG_TO_HREFLANG[language] || language;
+        document.documentElement.setAttribute("lang", hreflang);
+        upsertHreflangs();
       }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("aurelio:lang-changed", { detail: { language } }));

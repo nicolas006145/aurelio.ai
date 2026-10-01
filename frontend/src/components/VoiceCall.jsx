@@ -1,18 +1,23 @@
 import { PhoneOff, Mic, Loader2, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useI18n } from "@/i18n/I18nContext";
 
 const STATUE =
   "https://images.unsplash.com/photo-1601887389937-0b02c26b602c?crop=entropy&cs=srgb&fm=jpg&w=400&q=85";
 
-const LABELS = {
-  listening: "Estou ouvindo. Fale com calma…",
-  thinking: "Aurélio está refletindo…",
-  speaking: "Aurélio está falando. Toque para interromper.",
-  error: "Algo saiu do lugar.",
-  idle: "Conectando…",
-};
+function getLabels(t) {
+  return {
+    listening: t("voiceCall.listening"),
+    thinking: t("voiceCall.thinking"),
+    speaking: t("voiceCall.speaking"),
+    error: t("voiceCall.error"),
+    idle: t("voiceCall.idle"),
+  };
+}
 
 export function VoiceCall({ call }) {
+  const { t } = useI18n();
+  const LABELS = getLabels(t);
   const { active, phase, level, lastTranscript, lastReply, error, hangUp, interrupt } = call;
   const scale = phase === "listening" ? 1 + Math.min(level * 6, 0.6) : phase === "speaking" ? 1.08 : 1;
 
@@ -28,7 +33,7 @@ export function VoiceCall({ call }) {
         >
           <div className="grain" />
           <div className="relative z-10 text-center">
-            <p className="eyebrow">Ligação com Aurélio</p>
+            <p className="eyebrow">{t("voiceCall.title")}</p>
             <p data-testid="voice-call-status" className="mt-2 text-sm text-[var(--text-secondary)]">
               {error || LABELS[phase]}
             </p>
@@ -38,7 +43,7 @@ export function VoiceCall({ call }) {
             data-testid="voice-call-orb"
             onClick={phase === "speaking" ? interrupt : undefined}
             className="relative z-10 grid place-items-center"
-            aria-label="Aurélio"
+            aria-label={t("voiceCall.orbAriaLabel")}
           >
             <motion.span
               animate={{ scale: scale * 1.35, opacity: phase === "listening" ? 0.25 + level * 2 : 0.15 }}
@@ -52,7 +57,7 @@ export function VoiceCall({ call }) {
             />
             <img
               src={STATUE}
-              alt="Aurélio"
+              alt={t("voiceCall.orbImgAlt")}
               className="relative h-44 w-44 rounded-full object-cover border-2 border-[var(--border-accent)] shadow-2xl"
             />
             <span className="absolute -bottom-3 grid place-items-center h-10 w-10 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--terracotta)]">
@@ -84,7 +89,7 @@ export function VoiceCall({ call }) {
             onClick={hangUp}
             className="relative z-10 flex items-center gap-2 rounded-full bg-red-500/90 text-white px-7 py-3.5 font-semibold hover:bg-red-500 transition-colors"
           >
-            <PhoneOff size={18} /> Encerrar
+            <PhoneOff size={18} /> {t("voiceCall.hangUp")}
           </button>
         </motion.div>
       )}

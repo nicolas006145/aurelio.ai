@@ -123,7 +123,7 @@ export default function Landing() {
           <div className="absolute -inset-4 bg-[var(--terracotta)]/10 blur-3xl rounded-full" />
           <img
             src={STATUE}
-            alt="Busto estoico"
+            alt={t("landing.statueHeroAlt")}
             className="relative rounded-2xl w-full object-cover aspect-[3/4] border border-[var(--border)] grayscale-[0.15]"
           />
         </motion.div>
@@ -171,7 +171,7 @@ export default function Landing() {
       <section className="relative z-10 max-w-6xl mx-auto px-6 md:px-12 pt-4 pb-20 md:pb-24 grid md:grid-cols-2 gap-10 items-center">
         <img
           src={STATUE2}
-          alt="Estátua clássica"
+          alt={t("landing.statueCtaAlt")}
           className="rounded-2xl w-full object-cover aspect-[4/3] border border-[var(--border)] grayscale-[0.2]"
         />
         <div>

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { startChatTurn, openResumeStream, consumeSSE } from "@/lib/sse";
-import { THEMES } from "@/lib/themes";
+import { useThemes, themeOf } from "@/lib/themes";
 import { Sidebar } from "@/components/Sidebar";
 import { MessageBubble } from "@/components/MessageBubble";
 import { ThemeToggle, useTheme } from "@/components/ThemeToggle";
@@ -53,6 +53,7 @@ export default function Chat() {
   const { theme, toggle } = useTheme();
   const { speak, stop, playingId, loadingId, clearCache } = useTTS();
   const SUGGESTIONS = translateArray("chat.welcome.suggestions");
+  const THEMES = useThemes();
 
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
