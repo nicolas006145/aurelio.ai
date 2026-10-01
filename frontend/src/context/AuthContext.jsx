@@ -38,8 +38,9 @@ export function AuthProvider({ children }) {
         return null;
       }
       const { data } = await subscriptionApi.get();
-      setSubscription(data);
-      return data;
+      const sub = data?.subscription || data;
+      setSubscription(sub);
+      return sub;
     } catch {
       setSubscription(null);
       return null;
@@ -62,6 +63,9 @@ export function AuthProvider({ children }) {
       .get("/auth/me")
       .then((res) => {
         setUser(res.data);
+        if (res.data?.subscription) {
+          setSubscription(res.data.subscription);
+        }
         return refreshSubscription();
       })
       .catch(() => {

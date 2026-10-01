@@ -64,21 +64,22 @@ export default function MyPlan() {
   const [canceling, setCanceling] = useState(false);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
-  const planId = subscription?.plan_id || subscription?.plan?.id || "free";
+  const activeSub = subscription?.subscription || subscription || user?.subscription;
+  const planId = activeSub?.plan_id || activeSub?.plan?.id || "free";
   const Icon = getIcon(planId);
   const planMeta = useMemo(() => {
     const p = t(`myPlan.meta.${planId}`);
     return {
-      name: p?.name || t("myPlan.meta.free.name"),
+      name: activeSub?.plan_name || p?.name || t("myPlan.meta.free.name"),
       eyebrow: p?.eyebrow || t("myPlan.meta.free.eyebrow"),
       description: p?.description || t("myPlan.meta.free.description"),
       highlight: planId === "founder",
     };
-  }, [planId, t]);
+  }, [planId, activeSub?.plan_name, t]);
   const features = useMemo(() => translateArray(`plans.plans.${planId}.features`), [planId, translateArray]);
-  const price = subscription?.amount || subscription?.price_month || (planId === "founder" ? 7.9 : planId === "mentor" ? 19.9 : 0);
-  const statusBadge = getStatusBadge(subscription?.status, t);
-  const isActive = subscription?.status === "active" || subscription?.status === "ativo";
+  const price = activeSub?.price ?? activeSub?.amount ?? activeSub?.price_month ?? (planId === "founder" ? 7.9 : planId === "mentor" ? 19.9 : 0);
+  const statusBadge = getStatusBadge(activeSub?.status, t);
+  const isActive = activeSub?.status === "active" || activeSub?.status === "ativo";
 
   const handleCancel = async () => {
     try {
@@ -159,14 +160,14 @@ export default function MyPlan() {
                 <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">{t("myPlan.sections.start")}</div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                   <Calendar size={14} className="text-[var(--terracotta)]" />
-                  {formatDateBR(subscription?.started_at || subscription?.created_at) || "—"}
+                  {formatDateBR(activeSub?.started_at || activeSub?.created_at) || "—"}
                 </div>
               </div>
               <div className="space-y-1">
                 <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">{t("myPlan.sections.nextBilling")}</div>
                 <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
                   <CreditCard size={14} className="text-[var(--terracotta)]" />
-                  {isActive ? (formatDateBR(subscription?.next_billing_at || subscription?.renew_at) || "—") : "—"}
+                  {isActive ? (formatDateBR(activeSub?.expires_at || activeSub?.next_billing_at || activeSub?.renew_at) || "Ilimitado") : "—"}
                 </div>
               </div>
             </div>

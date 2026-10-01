@@ -106,15 +106,16 @@ export function Sidebar({
   const usedThemes = THEMES.filter((th) => conversations.some((c) => themeOf(c.theme, t).id === th.id));
   const visible = filter === "all" ? conversations : conversations.filter((c) => themeOf(c.theme, t).id === filter);
   const navigate = useNavigate();
-  const planLabel = user?.plan?.name || user?.subscription?.plan?.name || t("common.free");
-  const isPaid = user?.subscription?.status === "active" || user?.subscription?.status === "ativo" || (planLabel !== t("common.free"));
+  const sub = user?.subscription?.subscription || user?.subscription;
+  const planLabel = sub?.plan_name || user?.plan?.name || sub?.plan?.name || t("common.free");
+  const isPaid = sub?.status === "active" || sub?.status === "ativo" || (sub?.plan_id && sub?.plan_id !== "free");
   const userEmailMasked = user?.email_masked || maskEmail(user?.email);
   const primaryLine = user?.name?.trim() ? user.name : userEmailMasked;
   const paidPlanLabel = planLabel && planLabel !== t("common.free") ? planLabel : null;
   const secondaryLine = user?.name?.trim()
     ? userEmailMasked
     : (paidPlanLabel ? paidPlanLabel : t("common.free"));
-  const subscription = user?.subscription || null;
+  const subscription = sub || null;
 
   return (
     <>
