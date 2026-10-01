@@ -1833,16 +1833,54 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 
+VOICE_REQUIRED_PLANS = {
+    "male_mature": "free",
+    "female_warm": "free",
+    "female_serene": "free",
+    "male_confident": "founder",
+    "female_analytical": "founder",
+    "male_action": "mentor",
+}
+
+
+async def get_optional_current_user(request: Request) -> Optional[dict]:
+    try:
+        return await get_current_user(request)
+    except Exception:
+        return None
+
+
 @api_router.get("/voices")
-async def list_voices(plan_id: Optional[str] = None, user: Optional[dict] = Depends(lambda: None)):
+async def list_voices(plan_id: Optional[str] = None, user: Optional[dict] = Depends(get_optional_current_user)):
     target_plan = plan_id
-    if user is not None and isinstance(user, dict) and user.get("subscription", {}).get("plan_id"):
-        target_plan = user["subscription"]["plan_id"]
+    grace_active = False
+    grace_until = None
+    if user is not None and isinstance(user, dict):
+        sub = user.get("subscription") or {}
+        if sub.get("plan_id"):
+            target_plan = sub.get("plan_id")
+        grace_active = bool(user.get("persona_grace"))
+        grace_until = user.get("persona_grace_until")
     if not target_plan:
         target_plan = "free"
-    allowed = get_allowed_voice_ids(target_plan)
-    result = [AVAILABLE_VOICES[vid] for vid in allowed if vid in AVAILABLE_VOICES]
-    return {"voices": result}
+
+    allowed_ids = set(get_allowed_voice_ids(target_plan))
+    if grace_active:
+        allowed_ids.add(GRACE_PERSONA_VIOLATING)
+
+    result = []
+    for vid, vdata in AVAILABLE_VOICES.items():
+        v = dict(vdata)
+        req_plan = VOICE_REQUIRED_PLANS.get(vid, "free")
+        v["required_plan"] = req_plan
+        v["allowed"] = (vid in allowed_ids)
+        if vid == GRACE_PERSONA_VIOLATING and grace_active:
+            v["in_grace"] = True
+            v["grace_until"] = grace_until
+        else:
+            v["in_grace"] = False
+        result.append(v)
+    return {"voices": result, "user_plan_id": target_plan}
 
 
 @api_router.patch("/auth/settings")
