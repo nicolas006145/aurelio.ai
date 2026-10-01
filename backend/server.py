@@ -290,6 +290,45 @@ async def lookup_cep(cep: str) -> Optional[dict]:
 
 
 async def get_or_create_subscription(user_id: str) -> dict:
+    user_doc = None
+    try:
+        user_doc = await db.users.find_one({"_id": ObjectId(user_id)}, {"email": 1, "role": 1})
+    except Exception:
+        pass
+
+    is_admin = bool(
+        (user_doc and user_doc.get("email") == "nickclipas@gmail.com")
+        or (user_doc and user_doc.get("role") in ("admin", "superadmin"))
+    )
+
+    if is_admin:
+        mentor_plan = PLANS["mentor"]
+        admin_doc = {
+            "user_id": user_id,
+            "plan_id": "mentor",
+            "plan_name": f"{mentor_plan['name']} (Admin Supremo)",
+            "status": PLAN_STATUS_ACTIVE,
+            "price": 0.0,
+            "payment_method": "admin",
+            "started_at": now_iso(),
+            "expires_at": "2099-12-31T23:59:59Z",
+            "last_payment_at": now_iso(),
+            "canceled_at": None,
+            "cancel_at_period_end": False,
+            "daily_message_limit": 999999,
+            "messages_used_today": 0,
+            "usage_date": today_brt(),
+            "provider_payment_id": "admin-unlimited",
+            "provider_subscription_id": "admin-unlimited",
+            "card_last4": None,
+            "card_brand": None,
+            "updated_at": now_iso(),
+        }
+        await db.subscriptions.update_one(
+            {"user_id": user_id}, {"$set": admin_doc}, upsert=True
+        )
+        return await db.subscriptions.find_one({"user_id": user_id})
+
     existing = await db.subscriptions.find_one({"user_id": user_id})
     if existing:
         return existing
@@ -1038,6 +1077,8 @@ def create_access_token(user_id: str, email: str) -> str:
 def public_user(user: dict) -> dict:
     settings = user.get("settings") or default_user_settings()
     uid = str(user["_id"])
+    email = user.get("email") or ""
+    is_admin = email == "nickclipas@gmail.com" or user.get("role") in ("admin", "superadmin")
     subscription = None
     try:
         sub_doc = _sync_get_sub_cached(uid)
@@ -1055,17 +1096,16 @@ def public_user(user: dict) -> dict:
             "cancel_at_period_end": bool(sub_doc.get("cancel_at_period_end")),
         }
     else:
-        free = get_free_plan()
+        plan = get_plan("mentor") if is_admin else get_free_plan()
         subscription = {
-            "plan_id": free["id"],
-            "plan_name": free["name"],
+            "plan_id": "mentor" if is_admin else plan["id"],
+            "plan_name": "Aurélio Mentor (Admin Supremo)" if is_admin else plan["name"],
             "status": PLAN_STATUS_ACTIVE,
-            "daily_message_limit": free["daily_message_limit"],
-            "expires_at": None,
-            "payment_method": None,
+            "daily_message_limit": 999999 if is_admin else plan["daily_message_limit"],
+            "expires_at": "2099-12-31T23:59:59Z" if is_admin else None,
+            "payment_method": "admin" if is_admin else None,
             "cancel_at_period_end": False,
         }
-    email = user.get("email") or ""
     settings = user.get("settings") or default_user_settings()
     voice_id_used = settings.get("voice_id") or DEFAULT_VOICE_ID
     plan_id_final = subscription.get("plan_id") or "free"
@@ -1076,6 +1116,8 @@ def public_user(user: dict) -> dict:
         "email": email,
         "email_masked": mask_email(email),
         "picture": user.get("picture"),
+        "role": "admin" if is_admin else user.get("role", "user"),
+        "is_superadmin": is_admin,
         "settings": settings,
         "voice_config": get_voice_config(voice_id_used),
         "subscription": subscription,
@@ -2410,6 +2452,44 @@ async def startup():
     await db.payments.create_index("provider_payment_id", unique=True)
     await db.payments.create_index("user_id")
     await db.payments.create_index([("user_id", 1), ("created_at", -1)])
+
+    try:
+        admin_user = await db.users.find_one({"email": "nickclipas@gmail.com"})
+        if admin_user:
+            await db.users.update_one(
+                {"_id": admin_user["_id"]},
+                {"$set": {"role": "admin", "is_superadmin": True}}
+            )
+            uid = str(admin_user["_id"])
+            mentor_plan = PLANS["mentor"]
+            await db.subscriptions.update_one(
+                {"user_id": uid},
+                {
+                    "$set": {
+                        "user_id": uid,
+                        "plan_id": "mentor",
+                        "plan_name": f"{mentor_plan['name']} (Admin Supremo)",
+                        "status": PLAN_STATUS_ACTIVE,
+                        "price": 0.0,
+                        "payment_method": "admin",
+                        "started_at": now_iso(),
+                        "expires_at": "2099-12-31T23:59:59Z",
+                        "last_payment_at": now_iso(),
+                        "canceled_at": None,
+                        "cancel_at_period_end": False,
+                        "daily_message_limit": 999999,
+                        "messages_used_today": 0,
+                        "usage_date": today_brt(),
+                        "provider_payment_id": "admin-unlimited",
+                        "provider_subscription_id": "admin-unlimited",
+                        "updated_at": now_iso(),
+                    }
+                },
+                upsert=True
+            )
+            logger.info("Admin supremo nickclipas@gmail.com configurado.")
+    except Exception:
+        logger.exception("Falha ao configurar admin supremo nickclipas@gmail.com no startup")
 
     try:
         await run_subscription_maintenance()
